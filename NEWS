@@ -8,6 +8,7 @@ Videoshot, changes since 0.1.0-beta1
 - Fix frames that showed the wallpaper through a window on X11: the screen
   is now read by videoshot-grab, which reads a frame again until it is whole
 - Copy to Clipboard also offers the file path as text
+- Play a videoshot in the result window: click the play icon over the still
 
 =========================================
 Videoshot 0.1.0-beta1 - 14th November 2026

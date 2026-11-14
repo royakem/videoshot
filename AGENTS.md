@@ -21,7 +21,7 @@ Read [README.md](README.md) first.
 | `src/screenshot-portal.c` | Wayland: ScreenCast and Screenshot calls to the desktop portal. |
 | `src/screenshot-application.c` | Flow. `take_screenshot_timeout()` branches to `start_take_video()`; `video_recorded_cb()` opens the result window; `video_prepare()` converts before Save or Copy. |
 | `src/screenshot-interactive-dialog.c`, `data/ui/screenshot-interactive-dialog.ui` | Main dialog: the two buttons and the Length row. |
-| `src/screenshot-dialog.c`, `data/ui/screenshot-dialog.ui` | Result window. `screenshot_dialog_set_video()` adds the Format row. |
+| `src/screenshot-dialog.c`, `data/ui/screenshot-dialog.ui` | Result window. `screenshot_dialog_set_video()` adds the Format row and the play icon; a click plays the clip in place (`ffmpeg -re` writes scaled frames that are painted as they arrive). |
 | `src/screenshot-preferences.c` | Preferences window (format, folder). |
 | `src/screenshot-backend-x11.c` | `screenshot_backend_x11_get_target_rect()` gives the capture rectangle in device pixels. |
 | `data/com.royake.videoshot.gschema.xml` | Settings: `video-length`, `video-format`, `video-save-directory`. |

@@ -1,31 +1,54 @@
 Videoshot
 =========
 
-Videoshot takes screenshots and short video clips ("videoshots") of the whole
-screen, the focused window, or an area you select. It is a fork of GNOME
-Screenshot 41.0 as shipped by Linux Mint (`gnome-screenshot 41.0+mint2`), with
-recording added.
+**Make a video clip of your screen as easily as you take a screenshot.**
+
+Sometimes a picture is not enough: a bug that only shows when you click, a
+setting that is three menus deep, an animation, a quick "look, like this".
+Videoshot is for those moments. Choose the screen, a window or drag out an
+area, press **Take Videoshot**, and a few seconds later the clip is in front
+of you, ready to save or to paste into a chat.
+
+There is no project to set up, no timeline and nothing to learn. If you can
+take a screenshot, you can take a videoshot. And it still takes screenshots.
+
+![Selecting an area around a clock, recording it and saving the clip](docs/demo.gif)
+
+## What you can do with it
+
+- **Record what you point at.** The whole screen, the window in front, or an
+  area you drag out with the mouse.
+- **Keep it short.** Set the length in seconds and the recording ends by
+  itself. Or stop it early; what was recorded so far is kept.
+- **Check it before you send it.** The result window plays the clip in
+  place when you click it.
+- **Share it right away.** **Copy to Clipboard** puts the clip on the
+  clipboard as a file. Paste it into a chat, a mail, a folder or a document.
+- **Pick the format that fits.** MP4 and WebM for chats and the web, Matroska
+  for keeping, animated GIF for places that take pictures only. Change it per
+  clip in the result window; the file name ending follows.
+- **Show or hide the pointer**, and set a delay to get a menu open first.
+- **Use it from scripts and shortcuts.** Everything is on the command line
+  too, see below.
 
 ![The Videoshot dialog](docs/screenshots/videoshot-main.png)
 
-## What it adds to the Mint screenshot tool
+## How it works
 
-- A red **Take Videoshot** button next to **Take Screenshot**.
-- A **Length in Seconds** row under **Delay in Seconds**.
-- A result window for videoshots, like the one for screenshots: preview,
-  **Name**, **Folder**, **Format**, **Copy to Clipboard** and **Save**.
-- Output formats MP4 (H.264), WebM (VP9), Matroska (H.264) and animated GIF.
-  Pick the default under menu → **Preferences**, or change it per clip in the
-  result window. The file name ending follows the format.
-- File names say what was made: `Screenshot from <date>.png` or
-  `Videoshot from <date>.mp4`.
+1. Open Videoshot and choose **Screen**, **Window** or **Selection**.
+2. Set **Length in Seconds** and press the red **Take Videoshot** button.
+   With **Selection** you now drag out the area.
+3. The result window shows the clip. Click the play icon to watch it right
+   there; click again to stop. Give it a **Name**, choose a **Folder** and a
+   **Format**, then **Save** or **Copy to Clipboard**.
+
+Files are named after what they are: `Screenshot from <date>.png` or
+`Videoshot from <date>.mp4`. The default format is under menu →
+**Preferences**.
 
 A recording stops by itself after the set length. To stop early, click the
 record icon in the panel, launch Videoshot again, or run `videoshot --stop`.
 What was recorded so far is kept.
-
-**Copy to Clipboard** puts the video file on the clipboard, the way a file
-manager does. Paste it into a folder, a chat or a document.
 
 ![The result window of a videoshot](docs/screenshots/videoshot-result.png)
 
@@ -102,9 +125,13 @@ All `gnome-screenshot` options still work. See `man videoshot`.
 
 ## Where it comes from
 
-Videoshot is built on GNOME Screenshot by Jonathan Blandford, Emmanuele Bassi,
+Videoshot is a fork of GNOME Screenshot 41.0 as shipped by Linux Mint
+(`gnome-screenshot 41.0+mint2`), with recording added. It looks and works like
+the screenshot tool you know from Mint.
+
+It is built on GNOME Screenshot by Jonathan Blandford, Emmanuele Bassi,
 Cosimo Cecchi, Alexander Mikhaylenko and many others, with the changes Linux
-Mint made to version 41.0. The git history keeps all of it. See
+Mint made. The git history keeps all of it. See
 [AUTHORS.md](AUTHORS.md) and [NEWS](NEWS).
 
 Notes on the code layout and on testing are in [AGENTS.md](AGENTS.md).

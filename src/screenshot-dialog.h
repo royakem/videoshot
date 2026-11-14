@@ -33,6 +33,7 @@ ScreenshotDialog *screenshot_dialog_new          (GtkApplication *app,
                                                   char           *initial_uri);
 
 void              screenshot_dialog_set_video        (ScreenshotDialog *dialog,
+                                                      const gchar      *path,
                                                       const gchar      *format);
 const gchar      *screenshot_dialog_get_video_format (ScreenshotDialog *dialog);
 

@@ -44,7 +44,35 @@ struct _ScreenshotDialog
 
   gint drag_x;
   gint drag_y;
+
+  /* a videoshot can be played where its still is shown */
+  gchar *video_path;
+  struct _Player *player;
+  cairo_surface_t *frame;
+  gint image_width;
+  gint image_height;
+  gdouble icon_alpha;
+  gdouble icon_target;
+  guint fade_id;
 };
+
+/* Plays the videoshot: ffmpeg decodes it at its own pace, scaled to the
+ * preview, and writes plain frames that are painted as they arrive.
+ */
+typedef struct _Player
+{
+  ScreenshotDialog *dialog;   /* NULL once the dialog has let go of it */
+  GSubprocess *process;
+  GInputStream *stream;
+  GCancellable *cancellable;
+  guchar *buffer;
+  gsize size;
+  gint width;
+  gint height;
+} Player;
+
+#define FADE_INTERVAL 16 /* milliseconds */
+#define FADE_STEP     0.12
 
 G_DEFINE_TYPE (ScreenshotDialog, screenshot_dialog, HDY_TYPE_APPLICATION_WINDOW)
 
@@ -66,6 +94,171 @@ static GtkTargetEntry drag_types[] =
 {
   { "image/png", 0, TYPE_IMAGE_PNG },
 };
+
+static void
+player_free (Player *player)
+{
+  g_clear_object (&player->process);
+  g_clear_object (&player->cancellable);
+  g_free (player->buffer);
+  g_free (player);
+}
+
+static gboolean
+fade_cb (gpointer user_data)
+{
+  ScreenshotDialog *self = user_data;
+
+  if (self->icon_alpha < self->icon_target)
+    self->icon_alpha = MIN (self->icon_alpha + FADE_STEP, self->icon_target);
+  else
+    self->icon_alpha = MAX (self->icon_alpha - FADE_STEP, self->icon_target);
+
+  gtk_widget_queue_draw (self->preview_darea);
+
+  if (self->icon_alpha != self->icon_target)
+    return G_SOURCE_CONTINUE;
+
+  self->fade_id = 0;
+
+  return G_SOURCE_REMOVE;
+}
+
+static void
+fade_icon (ScreenshotDialog *self,
+           gdouble           target)
+{
+  self->icon_target = target;
+
+  if (self->fade_id == 0 && self->icon_alpha != target)
+    self->fade_id = g_timeout_add (FADE_INTERVAL, fade_cb, self);
+}
+
+/* Back to the still with the play icon over it. */
+static void
+player_stop (ScreenshotDialog *self)
+{
+  if (self->player != NULL)
+    {
+      /* the pending read ends with an error and frees the player */
+      self->player->dialog = NULL;
+      g_cancellable_cancel (self->player->cancellable);
+      g_subprocess_force_exit (self->player->process);
+      self->player = NULL;
+    }
+
+  g_clear_pointer (&self->frame, cairo_surface_destroy);
+  fade_icon (self, 1.0);
+  gtk_widget_queue_draw (self->preview_darea);
+}
+
+static void
+player_read_cb (GObject      *source,
+                GAsyncResult *result,
+                gpointer      user_data)
+{
+  Player *player = user_data;
+  ScreenshotDialog *self = player->dialog;
+  gsize size = 0;
+  gint row, stride;
+  guchar *pixels;
+
+  g_input_stream_read_all_finish (G_INPUT_STREAM (source), result, &size, NULL);
+
+  if (self == NULL)
+    {
+      player_free (player);
+      return;
+    }
+
+  if (size < player->size)
+    {
+      /* the end of the clip */
+      player_stop (self);
+      player_free (player);
+      return;
+    }
+
+  if (self->frame == NULL)
+    self->frame = cairo_image_surface_create (CAIRO_FORMAT_RGB24, player->width, player->height);
+
+  cairo_surface_flush (self->frame);
+  pixels = cairo_image_surface_get_data (self->frame);
+  stride = cairo_image_surface_get_stride (self->frame);
+  for (row = 0; row < player->height; row++)
+    memcpy (pixels + row * stride, player->buffer + row * player->width * 4, player->width * 4);
+  cairo_surface_mark_dirty (self->frame);
+  gtk_widget_queue_draw (self->preview_darea);
+
+  g_input_stream_read_all_async (player->stream, player->buffer, player->size,
+                                 G_PRIORITY_DEFAULT, player->cancellable,
+                                 player_read_cb, player);
+}
+
+static void
+player_start (ScreenshotDialog *self)
+{
+  g_autofree gchar *filter = NULL;
+  Player *player;
+
+  if (self->player != NULL || self->image_width < 2 || self->image_height < 2)
+    return;
+
+  player = g_new0 (Player, 1);
+  player->width = self->image_width;
+  player->height = self->image_height;
+  player->size = (gsize) player->width * player->height * 4;
+
+  filter = g_strdup_printf ("scale=%d:%d", player->width, player->height);
+  /* "-re" makes ffmpeg hand out the frames at the speed of the clip */
+  player->process = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE |
+                                      G_SUBPROCESS_FLAGS_STDERR_SILENCE,
+                                      NULL,
+                                      "ffmpeg", "-nostdin", "-loglevel", "error",
+                                      "-re", "-i", self->video_path,
+                                      "-vf", filter, "-an",
+                                      "-f", "rawvideo", "-pix_fmt", "bgra", "-",
+                                      NULL);
+  if (player->process == NULL)
+    {
+      player_free (player);
+      return;
+    }
+
+  player->dialog = self;
+  player->stream = g_subprocess_get_stdout_pipe (player->process);
+  player->cancellable = g_cancellable_new ();
+  player->buffer = g_malloc (player->size);
+  self->player = player;
+
+  fade_icon (self, 0.0);
+  g_input_stream_read_all_async (player->stream, player->buffer, player->size,
+                                 G_PRIORITY_DEFAULT, player->cancellable,
+                                 player_read_cb, player);
+}
+
+/* A round button with a triangle, in the middle of the still. */
+static void
+draw_play_icon (cairo_t *cr,
+                gdouble  x,
+                gdouble  y,
+                gdouble  radius,
+                gdouble  alpha)
+{
+  cairo_arc (cr, x, y, radius, 0, 2 * G_PI);
+  cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.6 * alpha);
+  cairo_fill_preserve (cr);
+  cairo_set_line_width (cr, radius / 14);
+  cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.9 * alpha);
+  cairo_stroke (cr);
+
+  cairo_move_to (cr, x - radius * 0.28, y - radius * 0.45);
+  cairo_line_to (cr, x + radius * 0.48, y);
+  cairo_line_to (cr, x - radius * 0.28, y + radius * 0.45);
+  cairo_close_path (cr);
+  cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, alpha);
+  cairo_fill (cr);
+}
 
 static void
 preview_draw_cb (GtkWidget        *drawing_area,
@@ -114,6 +307,27 @@ preview_draw_cb (GtkWidget        *drawing_area,
   gdk_cairo_set_source_pixbuf (cr, self->preview_image, x, y);
   cairo_paint (cr);
 
+  self->image_width = image_width;
+  self->image_height = image_height;
+
+  if (self->frame != NULL)
+    {
+      /* the frames were asked for in the size the preview had at the start */
+      cairo_save (cr);
+      cairo_translate (cr, x, y);
+      cairo_scale (cr,
+                   (gdouble) image_width / cairo_image_surface_get_width (self->frame),
+                   (gdouble) image_height / cairo_image_surface_get_height (self->frame));
+      cairo_set_source_surface (cr, self->frame, 0, 0);
+      cairo_paint (cr);
+      cairo_restore (cr);
+    }
+
+  if (self->video_path != NULL && self->icon_alpha > 0.0)
+    draw_play_icon (cr, x + image_width / 2.0, y + image_height / 2.0,
+                    MIN (36.0 * scale, MIN (image_width, image_height) / 3.0),
+                    self->icon_alpha);
+
   cairo_restore (cr);
 }
 
@@ -135,6 +349,15 @@ preview_button_release_event_cb (GtkWidget        *drawing_area,
 {
   self->drag_x = 0;
   self->drag_y = 0;
+
+  /* a click on a videoshot plays it; a click while it plays stops it */
+  if (self->video_path != NULL && event->button == GDK_BUTTON_PRIMARY)
+    {
+      if (self->player != NULL)
+        player_stop (self);
+      else
+        player_start (self);
+    }
 
   return FALSE;
 }
@@ -224,9 +447,36 @@ format_changed_cb (GtkComboBox      *combo,
 }
 
 static void
+screenshot_dialog_dispose (GObject *object)
+{
+  ScreenshotDialog *self = SCREENSHOT_DIALOG (object);
+
+  if (self->player != NULL)
+    {
+      self->player->dialog = NULL;
+      g_cancellable_cancel (self->player->cancellable);
+      g_subprocess_force_exit (self->player->process);
+      self->player = NULL;
+    }
+
+  if (self->fade_id != 0)
+    {
+      g_source_remove (self->fade_id);
+      self->fade_id = 0;
+    }
+
+  g_clear_pointer (&self->frame, cairo_surface_destroy);
+  g_clear_pointer (&self->video_path, g_free);
+
+  G_OBJECT_CLASS (screenshot_dialog_parent_class)->dispose (object);
+}
+
+static void
 screenshot_dialog_class_init (ScreenshotDialogClass *klass)
 {
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+
+  G_OBJECT_CLASS (klass)->dispose = screenshot_dialog_dispose;
 
   signals[SIGNAL_SAVE] =
     g_signal_new ("save",
@@ -334,10 +584,12 @@ screenshot_dialog_new (GtkApplication *app,
 }
 
 /* Turns the dialog into the result window of a videoshot: the preview is
- * a still of the video, and a format can be chosen.
+ * a still of the video at @path with a play icon over it, a click plays it
+ * there, and a format can be chosen.
  */
 void
 screenshot_dialog_set_video (ScreenshotDialog *self,
+                             const gchar      *path,
                              const gchar      *format)
 {
   const ScreenshotVideoFormat *formats;
@@ -345,6 +597,11 @@ screenshot_dialog_set_video (ScreenshotDialog *self,
 
   /* the still is not the video, so it is not offered for dragging */
   gtk_drag_source_unset (self->preview_darea);
+
+  g_free (self->video_path);
+  self->video_path = g_strdup (path);
+  self->icon_alpha = self->icon_target = 1.0;
+  gtk_widget_add_events (self->preview_darea, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
 
   formats = screenshot_video_get_formats (&n_formats);
   for (i = 0; i < n_formats; i++)

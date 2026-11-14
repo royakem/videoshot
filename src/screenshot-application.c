@@ -859,7 +859,7 @@ video_recorded_cb (const gchar  *path,
   self->dialog = screenshot_dialog_new (GTK_APPLICATION (self),
                                         self->screenshot,
                                         self->save_uri);
-  screenshot_dialog_set_video (self->dialog, self->video_format);
+  screenshot_dialog_set_video (self->dialog, self->video_path, self->video_format);
   g_signal_connect_object (self->dialog, "save", G_CALLBACK (save_clicked_cb), self, 0);
   g_signal_connect_object (self->dialog, "copy", G_CALLBACK (copy_clicked_cb), self, 0);
   g_signal_connect_object (self->dialog, "back", G_CALLBACK (back_clicked_cb), self, 0);
