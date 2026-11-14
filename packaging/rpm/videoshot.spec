@@ -1,11 +1,13 @@
+%global tag     0.1.0-beta1
+
 Name:           videoshot
-Version:        0.1.0
+Version:        0.1.0~beta1
 Release:        1%{?dist}
 Summary:        Screenshots and short video clips of your screen
 
 License:        GPL-2.0-or-later
 URL:            https://github.com/royakem/videoshot
-Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
+Source0:        %{url}/archive/v%{tag}/%{name}-%{tag}.tar.gz
 
 BuildRequires:  gcc
 BuildRequires:  meson
@@ -29,7 +31,7 @@ Videoshot is a fork of GNOME Screenshot as shipped by Linux Mint. Recording
 needs an X11 session.
 
 %prep
-%autosetup
+%autosetup -n %{name}-%{tag}
 
 %build
 %meson
@@ -54,5 +56,5 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/com.royake.Videoshot.
 %{_mandir}/man1/videoshot.1*
 
 %changelog
-* Sat Nov 14 2026 Roy-Åke Martinsson - 0.1.0-1
-- First release
+* Sat Nov 14 2026 Roy-Åke Martinsson - 0.1.0~beta1-1
+- First beta

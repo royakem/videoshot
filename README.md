@@ -90,7 +90,7 @@ Notes on the code layout and on testing are in [AGENTS.md](AGENTS.md).
 
 ## Status
 
-Version 0.1.0, a first release. Known gaps: no Wayland recording, no countdown
+Version 0.1.0-beta1, a beta. Known gaps: no Wayland recording, no countdown
 during the delay, and the new texts are in English only.
 
 ## Support

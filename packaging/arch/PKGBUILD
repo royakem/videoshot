@@ -1,7 +1,8 @@
 # Maintainer: Roy-Åke Martinsson
 
 pkgname=videoshot
-pkgver=0.1.0
+pkgver=0.1.0beta1
+_tag=0.1.0-beta1
 pkgrel=1
 pkgdesc="Screenshots and short video clips of your screen, a window or a selection"
 arch=('x86_64')
@@ -9,11 +10,11 @@ url="https://github.com/royakem/videoshot"
 license=('GPL-2.0-or-later')
 depends=('gtk3' 'libhandy' 'libx11' 'libxext' 'ffmpeg')
 makedepends=('meson' 'gettext')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+source=("$pkgname-$_tag.tar.gz::$url/archive/v$_tag.tar.gz")
 sha256sums=('SKIP')
 
 build() {
-  arch-meson "$pkgname-$pkgver" build
+  arch-meson "$pkgname-$_tag" build
   meson compile -C build
 }
 

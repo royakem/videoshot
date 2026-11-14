@@ -1,7 +1,7 @@
 project(
   'videoshot',
   'c',
-  version: '0.1.0',
+  version: '0.1.0-beta1',
   license: 'GPLv2+',
   meson_version: '>= 0.50.0',
   default_options: [

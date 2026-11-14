@@ -1,4 +1,4 @@
-videoshot (0.1.0) zena; urgency=medium
+videoshot (0.1.0~beta1) zena; urgency=medium
 
   * Fork of gnome-screenshot 41.0+mint2+wilma, renamed to Videoshot.
   * Take Videoshot button, Length setting, videoshot result window with

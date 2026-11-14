@@ -28,7 +28,7 @@
     <kudo>ModernToolkit</kudo>
   </kudos>
   <releases>
-    <release version="0.1.0" type="development" date="2026-11-14">
+    <release version="0.1.0~beta1" type="development" date="2026-11-14">
       <description>
         <p>First version: GNOME Screenshot 41.0 (Linux Mint) with videoshots added.</p>
       </description>

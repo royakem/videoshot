@@ -76,7 +76,9 @@ Preferences, and a plain screenshot.
 the committed tree in clean containers and runs `packaging/smoke-test.sh` in
 each. Run it before a release. H.264 uses libx264, or libopenh264 where ffmpeg
 has no libx264 (Fedora). The spec and PKGBUILD download the `v<version>` tag
-archive from GitHub, so they only work on their own once that tag is public.
+archive from GitHub. A release changes the version in `meson.build`,
+`debian/changelog`, the spec, the PKGBUILD, the metainfo file and `NEWS`;
+betas are `0.1.0-beta1` as a tag and `0.1.0~beta1` for apt and dnf.
 
 ## Open points
 
