@@ -20,7 +20,9 @@
       Videoshot is a fork of GNOME Screenshot as shipped by Linux Mint.
     </p>
   </description>
-  <url type="homepage">https://royake.com</url>
+  <url type="homepage">https://github.com/royakem/videoshot</url>
+  <url type="bugtracker">https://github.com/royakem/videoshot/issues</url>
+  <url type="donation">https://buymeacoffee.com/royake</url>
   <kudos>
     <kudo>HiDpiIcon</kudo>
     <kudo>ModernToolkit</kudo>

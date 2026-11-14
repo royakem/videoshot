@@ -76,6 +76,14 @@ Notes on the code layout and on testing are in [AGENTS.md](AGENTS.md).
 Version 0.1.0, a first release. Known gaps: no Wayland recording, no countdown
 during the delay, and the new texts are in English only.
 
+## Support
+
+If Videoshot is useful to you, you can support the work:
+
+**[☕ Buy me a coffee](https://buymeacoffee.com/royake)**
+
+Created and maintained by **Roy-Åke Martinsson** · [royake.com](https://royake.com)
+
 ## License
 
 GPL-2.0-or-later, the same as GNOME Screenshot. See [COPYING](COPYING).

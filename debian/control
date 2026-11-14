@@ -14,7 +14,7 @@ Build-Depends: appstream,
                meson (>= 0.50)
 Standards-Version: 4.6.0
 Rules-Requires-Root: no
-Homepage: https://royake.com
+Homepage: https://github.com/royakem/videoshot
 
 Package: videoshot
 Architecture: any
