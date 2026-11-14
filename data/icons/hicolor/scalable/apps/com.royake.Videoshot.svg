@@ -1,26 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3d4a5c"/>
-      <stop offset="1" stop-color="#232b38"/>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3f4b"/>
+      <stop offset="1" stop-color="#1c1f26"/>
     </linearGradient>
-    <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f0525d"/>
-      <stop offset="1" stop-color="#c01c28"/>
+    <linearGradient id="label" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbf6e9"/>
+      <stop offset="1" stop-color="#ece3cc"/>
     </linearGradient>
+    <clipPath id="win"><rect x="26" y="58" width="76" height="26" rx="4"/></clipPath>
+    <clipPath id="lab"><rect x="14" y="32" width="100" height="20" rx="3"/></clipPath>
   </defs>
-  <!-- screen -->
-  <rect x="10" y="20" width="108" height="88" rx="10" fill="#1a1f29"/>
-  <rect x="14" y="24" width="100" height="80" rx="7" fill="url(#screen)"/>
-  <!-- selection corners -->
-  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M30 54 V40 H44"/>
-    <path d="M84 40 H98 V54"/>
-    <path d="M98 74 V88 H84"/>
-    <path d="M44 88 H30 V74"/>
+  <!-- VHS shell -->
+  <rect x="4" y="22" width="120" height="84" rx="8" fill="#0e1014"/>
+  <rect x="6" y="24" width="116" height="78" rx="6" fill="url(#body)"/>
+  <!-- label with retro stripes -->
+  <rect x="14" y="32" width="100" height="20" rx="3" fill="url(#label)"/>
+  <g clip-path="url(#lab)">
+    <rect x="14" y="41" width="100" height="4" fill="#e01b24"/>
+    <rect x="14" y="45" width="100" height="3.5" fill="#ff7800"/>
+    <rect x="14" y="48.5" width="100" height="3.5" fill="#f6d32d"/>
   </g>
-  <!-- record dot -->
-  <circle cx="64" cy="64" r="15" fill="url(#dot)"/>
-  <circle cx="64" cy="64" r="15" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
+  <!-- rec dot on the label -->
+  <circle cx="24" cy="37" r="3.2" fill="#e01b24"/>
+  <rect x="31" y="35" width="26" height="4" rx="2" fill="#3a3f4b" fill-opacity="0.55"/>
+  <!-- tape window with two big reels -->
+  <rect x="24" y="56" width="80" height="30" rx="5" fill="#0e1014"/>
+  <rect x="26" y="58" width="76" height="26" rx="4" fill="#565d6e"/>
+  <g clip-path="url(#win)">
+    <circle cx="40" cy="71" r="17" fill="#23262e"/>
+    <circle cx="88" cy="71" r="13" fill="#23262e"/>
+    <circle cx="40" cy="71" r="8" fill="#f6f5f4"/>
+    <circle cx="88" cy="71" r="8" fill="#f6f5f4"/>
+    <g stroke="#23262e" stroke-width="2.4" stroke-linecap="round">
+      <path d="M40 64v3.4M40 74.6V78M33 71h3.4M43.6 71H47"/>
+      <path d="M88 64v3.4M88 74.6V78M81 71h3.4M91.6 71H95"/>
+    </g>
+    <circle cx="40" cy="71" r="2.4" fill="#23262e"/>
+    <circle cx="88" cy="71" r="2.4" fill="#23262e"/>
+  </g>
+  <!-- shell details -->
+  <rect x="14" y="92" width="22" height="4" rx="2" fill="#0e1014"/>
+  <rect x="92" y="92" width="22" height="4" rx="2" fill="#0e1014"/>
+  <rect x="56" y="90" width="16" height="7" rx="2" fill="#0e1014"/>
 </svg>
