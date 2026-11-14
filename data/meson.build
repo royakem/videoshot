@@ -2,11 +2,11 @@ gnome = import('gnome')
 
 desktop_file = i18n.merge_file(
   type: 'desktop',
-  input: 'org.gnome.Screenshot.desktop.in',
-  output: 'org.gnome.Screenshot.desktop',
+  input: 'com.royake.Videoshot.desktop.in',
+  output: 'com.royake.Videoshot.desktop',
   po_dir: join_paths(meson.current_source_dir(), '../po'),
   install: true,
-  install_dir: gnome_screenshot_appsdir
+  install_dir: videoshot_appsdir
 )
 
 # Validate Desktop file
@@ -22,11 +22,11 @@ if desktop_file_validate.found()
 endif
 
 metainfo_file = i18n.merge_file(
-  input: 'org.gnome.Screenshot.metainfo.xml.in',
-  output: 'org.gnome.Screenshot.metainfo.xml',
+  input: 'com.royake.Videoshot.metainfo.xml.in',
+  output: 'com.royake.Videoshot.metainfo.xml',
   po_dir: join_paths(meson.current_source_dir(), '../po'),
   install: true,
-  install_dir: gnome_screenshot_appdatadir
+  install_dir: videoshot_appdatadir
 )
 
 # Validate metainfo
@@ -44,18 +44,18 @@ if appstream_util.found()
 endif
 
 service_conf = configuration_data()
-service_conf.set('bindir', gnome_screenshot_bindir)
+service_conf.set('bindir', videoshot_bindir)
 configure_file(
-  input: 'org.gnome.Screenshot.service.in',
-  output: 'org.gnome.Screenshot.service',
+  input: 'com.royake.Videoshot.service.in',
+  output: 'com.royake.Videoshot.service',
   configuration: service_conf,
   install: true,
-  install_dir: gnome_screenshot_servicesdir
+  install_dir: videoshot_servicesdir
 )
 
 install_data(
-  'org.gnome.gnome-screenshot.gschema.xml',
-  install_dir: gnome_screenshot_schemadir
+  'com.royake.videoshot.gschema.xml',
+  install_dir: videoshot_schemadir
 )
 
 glib_compile_schemas = find_program('glib-compile-schemas', required: false)
@@ -74,13 +74,13 @@ endif
 
 resources = gnome.compile_resources(
   'screenshot-resources',
-  'org.gnome.Screenshot.gresource.xml',
+  'com.royake.Videoshot.gresource.xml',
   source_dir: '.',
   c_name: 'screenshot'
 )
 
 install_data(
-  'gnome-screenshot.1',
+  'videoshot.1',
   install_dir: join_paths(get_option('mandir'), 'man1')
 )
 

@@ -4,6 +4,7 @@
  * Copyright (C) 2006 Emmanuele Bassi <ebassi@gnome.org>
  * Copyright (C) 2008-2012 Cosimo Cecchi <cosimoc@gnome.org>
  * Copyright (C) 2020 Philipp Wolfer <ph.wolfer@gmail.com>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -38,10 +39,14 @@
 #include "screenshot-config.h"
 #include "screenshot-filename-builder.h"
 #include "screenshot-interactive-dialog.h"
+#include "screenshot-preferences.h"
+#include "screenshot-video.h"
 #include "screenshot-utils.h"
 #include "screenshot-dialog.h"
 
 #define LAST_SAVE_DIRECTORY_KEY "last-save-directory"
+#define VIDEO_SAVE_DIRECTORY_KEY "video-save-directory"
+#define VIDEO_FORMAT_KEY "video-format"
 
 static void screenshot_save_to_file (ScreenshotApplication *self);
 static void screenshot_show_interactive_dialog (ScreenshotApplication *self);
@@ -58,8 +63,17 @@ struct _ScreenshotApplication
 
   GdkRectangle *rectangle;
 
+  /* the recording the result dialog is about, if it shows a videoshot */
+  gchar *video_path;
+  gchar *video_format;
+
   ScreenshotDialog *dialog;
 };
+
+typedef void (* VideoReadyFunc) (ScreenshotApplication *self,
+                                 const gchar           *path);
+
+static void video_save_to_file (ScreenshotApplication *self);
 
 G_DEFINE_TYPE (ScreenshotApplication, screenshot_application, GTK_TYPE_APPLICATION)
 
@@ -68,7 +82,8 @@ save_folder_to_settings (ScreenshotApplication *self)
 {
   g_autofree gchar *folder = screenshot_dialog_get_folder (self->dialog);
   g_settings_set_string (screenshot_config->settings,
-                         LAST_SAVE_DIRECTORY_KEY, folder);
+                         self->video_path != NULL ? VIDEO_SAVE_DIRECTORY_KEY : LAST_SAVE_DIRECTORY_KEY,
+                         folder);
 }
 
 static void
@@ -96,7 +111,7 @@ set_recent_entry (ScreenshotApplication *self)
   recent_data.display_name = NULL;
   recent_data.description = NULL;
   recent_data.mime_type = "image/png";
-  recent_data.app_name = "GNOME Screenshot";
+  recent_data.app_name = "Videoshot";
   recent_data.app_exec = app_exec;
   recent_data.groups = groups;
   recent_data.is_private = FALSE;
@@ -110,12 +125,15 @@ screenshot_close_interactive_dialog (ScreenshotApplication *self)
   ScreenshotDialog *dialog = self->dialog;
   save_folder_to_settings (self);
   gtk_widget_destroy (GTK_WIDGET (dialog));
+  g_clear_pointer (&self->video_path, g_free);
+  g_clear_pointer (&self->video_format, g_free);
 }
 
 static void
 save_pixbuf_handle_success (ScreenshotApplication *self)
 {
-  set_recent_entry (self);
+  if (self->video_path == NULL)
+    set_recent_entry (self);
 
   if (screenshot_config->interactive)
     {
@@ -182,7 +200,9 @@ save_pixbuf_handle_error (ScreenshotApplication *self,
           screenshot_show_dialog (GTK_WINDOW (dialog),
                                   GTK_MESSAGE_ERROR,
                                   GTK_BUTTONS_OK,
-                                  _("Unable to capture a screenshot"),
+                                  self->video_path != NULL ?
+                                    _("Unable to save the videoshot") :
+                                    _("Unable to capture a screenshot"),
                                   _("Error creating file. Please choose another location and retry."),
                                   (ScreenshotResponseFunc) screenshot_dialog_focus_cb,
                                   dialog);
@@ -263,7 +283,7 @@ save_with_description_and_profile (ScreenshotApplication *self,
                                    format, NULL,
                                    save_pixbuf_ready_cb, self,
                                    "icc-profile", self->icc_profile_base64,
-                                   "tEXt::Software", "gnome-screenshot",
+                                   "tEXt::Software", "videoshot",
                                    NULL);
 }
 static void
@@ -275,7 +295,7 @@ save_with_description (ScreenshotApplication *self,
                                    G_OUTPUT_STREAM (os),
                                    format, NULL,
                                    save_pixbuf_ready_cb, self,
-                                   "tEXt::Software", "gnome-screenshot",
+                                   "tEXt::Software", "videoshot",
                                    NULL);
 }
 
@@ -346,6 +366,12 @@ screenshot_save_to_file (ScreenshotApplication *self)
 {
   g_autoptr(GFile) target_file = NULL;
 
+  if (self->video_path != NULL)
+    {
+      video_save_to_file (self);
+      return;
+    }
+
   if (self->dialog != NULL)
     screenshot_dialog_set_busy (self->dialog, TRUE);
 
@@ -393,6 +419,188 @@ screenshot_save_to_clipboard (ScreenshotApplication *self)
   gtk_clipboard_set_image (clipboard, self->screenshot);
 }
 
+
+/* Videoshots: the recording is made into the cache folder, then the result
+ * dialog offers to save or copy it, in the recorded format or another one.
+ */
+
+typedef struct {
+  ScreenshotApplication *self;
+  VideoReadyFunc func;
+} VideoReadyData;
+
+static void
+video_converted_cb (const gchar  *path,
+                    const GError *error,
+                    gpointer      user_data)
+{
+  VideoReadyData *data = user_data;
+  ScreenshotApplication *self = data->self;
+
+  screenshot_dialog_set_busy (self->dialog, FALSE);
+
+  if (error != NULL)
+    screenshot_show_dialog (GTK_WINDOW (self->dialog),
+                            GTK_MESSAGE_ERROR,
+                            GTK_BUTTONS_OK,
+                            _("Unable to convert the videoshot"),
+                            error->message,
+                            NULL,
+                            NULL);
+  else
+    data->func (self, path);
+
+  g_free (data);
+}
+
+/* Calls @func with the recording in the format chosen in the dialog,
+ * converting it first if it was recorded in another one.
+ */
+static void
+video_prepare (ScreenshotApplication *self,
+               VideoReadyFunc         func)
+{
+  const gchar *format = screenshot_dialog_get_video_format (self->dialog);
+  g_autofree gchar *stem = NULL, *converted = NULL;
+  VideoReadyData *data;
+
+  /* the format chosen here is the one the next videoshot is recorded in */
+  g_settings_set_string (screenshot_config->settings, VIDEO_FORMAT_KEY, format);
+
+  if (g_strcmp0 (format, self->video_format) == 0)
+    {
+      func (self, self->video_path);
+      return;
+    }
+
+  stem = g_strndup (self->video_path, strrchr (self->video_path, '.') - self->video_path);
+  converted = g_strdup_printf ("%s.%s", stem, format);
+
+  if (g_file_test (converted, G_FILE_TEST_EXISTS))
+    {
+      func (self, converted);
+      return;
+    }
+
+  data = g_new0 (VideoReadyData, 1);
+  data->self = self;
+  data->func = func;
+
+  screenshot_dialog_set_busy (self->dialog, TRUE);
+  screenshot_video_convert_async (self->video_path, format, converted,
+                                  video_converted_cb, data);
+}
+
+static void
+video_copy_ready_cb (GObject      *source,
+                     GAsyncResult *res,
+                     gpointer      user_data)
+{
+  ScreenshotApplication *self = user_data;
+  g_autoptr(GError) error = NULL;
+
+  g_file_copy_finish (G_FILE (source), res, &error);
+
+  if (error != NULL)
+    {
+      save_pixbuf_handle_error (self, error);
+      return;
+    }
+
+  save_pixbuf_handle_success (self);
+}
+
+static void
+video_save_ready (ScreenshotApplication *self,
+                  const gchar           *path)
+{
+  g_autoptr(GFile) source = g_file_new_for_path (path);
+  g_autoptr(GFile) target = g_file_new_for_uri (self->save_uri);
+
+  screenshot_dialog_set_busy (self->dialog, TRUE);
+
+  g_file_copy_async (source, target,
+                     self->should_overwrite ? G_FILE_COPY_OVERWRITE : G_FILE_COPY_NONE,
+                     G_PRIORITY_DEFAULT,
+                     NULL, NULL, NULL,
+                     video_copy_ready_cb, self);
+}
+
+static void
+video_save_to_file (ScreenshotApplication *self)
+{
+  const gchar *format = screenshot_dialog_get_video_format (self->dialog);
+
+  /* the file gets the ending of its format whatever was typed */
+  if (g_strcmp0 (screenshot_video_format_for_path (self->save_uri), format) != 0)
+    {
+      gchar *uri = g_strdup_printf ("%s.%s", self->save_uri, format);
+
+      g_free (self->save_uri);
+      self->save_uri = uri;
+    }
+
+  video_prepare (self, video_save_ready);
+}
+
+enum {
+  CLIPBOARD_URI_LIST,
+  CLIPBOARD_COPIED_FILES,
+};
+
+static void
+video_clipboard_get_cb (GtkClipboard     *clipboard,
+                        GtkSelectionData *selection_data,
+                        guint             info,
+                        gpointer          user_data)
+{
+  const gchar *uri = user_data;
+
+  if (info == CLIPBOARD_URI_LIST)
+    {
+      gchar *uris[] = { (gchar *) uri, NULL };
+
+      gtk_selection_data_set_uris (selection_data, uris);
+    }
+  else
+    {
+      /* what the file managers put on the clipboard for Copy */
+      g_autofree gchar *text = g_strdup_printf ("copy\n%s", uri);
+
+      gtk_selection_data_set (selection_data,
+                              gtk_selection_data_get_target (selection_data),
+                              8, (const guchar *) text, strlen (text));
+    }
+}
+
+static void
+video_clipboard_clear_cb (GtkClipboard *clipboard,
+                          gpointer      user_data)
+{
+  g_free (user_data);
+}
+
+/* Puts the video file on the clipboard, the way a file manager does, so
+ * it can be pasted into folders, chats and documents.
+ */
+static void
+video_copy_ready (ScreenshotApplication *self,
+                  const gchar           *path)
+{
+  static const GtkTargetEntry targets[] = {
+    { "text/uri-list", 0, CLIPBOARD_URI_LIST },
+    { "x-special/gnome-copied-files", 0, CLIPBOARD_COPIED_FILES },
+  };
+  GtkClipboard *clipboard;
+
+  clipboard = gtk_clipboard_get_for_display (gdk_display_get_default (),
+                                             GDK_SELECTION_CLIPBOARD);
+  gtk_clipboard_set_with_data (clipboard, targets, G_N_ELEMENTS (targets),
+                               video_clipboard_get_cb, video_clipboard_clear_cb,
+                               g_filename_to_uri (path, NULL, NULL));
+  gtk_clipboard_set_can_store (clipboard, targets, G_N_ELEMENTS (targets));
+}
+
 static void
 save_clicked_cb (ScreenshotDialog      *dialog,
                  ScreenshotApplication *self)
@@ -407,7 +615,10 @@ static void
 copy_clicked_cb (ScreenshotDialog      *dialog,
                  ScreenshotApplication *self)
 {
-  screenshot_save_to_clipboard (self);
+  if (self->video_path != NULL)
+    video_prepare (self, video_copy_ready);
+  else
+    screenshot_save_to_clipboard (self);
 }
 
 static void
@@ -540,11 +751,148 @@ finish_take_screenshot (ScreenshotApplication *self)
     screenshot_build_filename_async (screenshot_config->save_dir, NULL, build_filename_ready_cb, self);
 }
 
+static void
+video_error_response_cb (gint                   response,
+                         ScreenshotApplication *self)
+{
+  if (screenshot_config->activated)
+    screenshot_show_interactive_dialog (self);
+
+  g_application_release (G_APPLICATION (self));
+}
+
+static void
+video_recorded_cb (const gchar  *path,
+                   const GError *error,
+                   gpointer      user_data)
+{
+  ScreenshotApplication *self = user_data;
+  g_autofree gchar *save_dir = NULL, *basename = NULL, *save_path = NULL;
+  g_autoptr(GFile) save_file = NULL;
+  GdkPixbuf *preview;
+
+  if (error != NULL)
+    {
+      g_critical ("Unable to record a videoshot: %s", error->message);
+
+      if (screenshot_config->file == NULL)
+        screenshot_show_dialog (NULL,
+                                GTK_MESSAGE_ERROR,
+                                GTK_BUTTONS_OK,
+                                _("Unable to record a videoshot"),
+                                error->message,
+                                (ScreenshotResponseFunc) video_error_response_cb,
+                                self);
+      else
+        {
+          g_application_release (G_APPLICATION (self));
+          exit (EXIT_FAILURE);
+        }
+
+      return;
+    }
+
+  /* recorded straight into the file that was asked for */
+  if (screenshot_config->file != NULL)
+    {
+      g_application_release (G_APPLICATION (self));
+      return;
+    }
+
+  preview = screenshot_video_get_preview (path);
+  if (preview == NULL)
+    {
+      preview = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, 256, 144);
+      gdk_pixbuf_fill (preview, 0x000000ff);
+    }
+
+  g_clear_object (&self->screenshot);
+  self->screenshot = preview;
+
+  g_free (self->video_path);
+  self->video_path = g_strdup (path);
+  g_free (self->video_format);
+  self->video_format = g_strdup (screenshot_video_format_for_path (path));
+
+  save_dir = screenshot_video_get_save_dir ();
+  basename = g_path_get_basename (path);
+  save_path = g_build_filename (save_dir, basename, NULL);
+  save_file = g_file_new_for_path (save_path);
+
+  g_free (self->save_uri);
+  self->save_uri = g_file_get_uri (save_file);
+  self->should_overwrite = FALSE;
+
+  screenshot_config->interactive = TRUE;
+
+  g_mkdir_with_parents (save_dir, 0755);
+
+  self->dialog = screenshot_dialog_new (GTK_APPLICATION (self),
+                                        self->screenshot,
+                                        self->save_uri);
+  screenshot_dialog_set_video (self->dialog, self->video_format);
+  g_signal_connect_object (self->dialog, "save", G_CALLBACK (save_clicked_cb), self, 0);
+  g_signal_connect_object (self->dialog, "copy", G_CALLBACK (copy_clicked_cb), self, 0);
+  g_signal_connect_object (self->dialog, "back", G_CALLBACK (back_clicked_cb), self, 0);
+
+  g_application_release (G_APPLICATION (self));
+}
+
+static void
+start_take_video (ScreenshotApplication *self)
+{
+  g_autofree gchar *format = NULL, *path = NULL;
+  GdkRectangle rect;
+  gboolean found;
+
+  found = screenshot_video_get_target_rect (self->rectangle, &rect);
+  g_clear_pointer (&self->rectangle, g_free);
+
+  if (!found)
+    {
+      g_autoptr(GError) error = NULL;
+
+      g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                           _("Videoshots need an X11 session"));
+      video_recorded_cb (NULL, error, self);
+      return;
+    }
+
+  format = g_settings_get_string (screenshot_config->settings, VIDEO_FORMAT_KEY);
+
+  if (screenshot_config->file != NULL)
+    {
+      path = g_file_get_path (screenshot_config->file);
+
+      if (screenshot_video_format_for_path (path) != NULL)
+        {
+          g_free (format);
+          format = g_strdup (screenshot_video_format_for_path (path));
+        }
+    }
+  else
+    {
+      g_autofree gchar *cache_dir = screenshot_video_get_cache_dir ();
+
+      path = screenshot_video_build_filename (cache_dir, format);
+    }
+
+  screenshot_video_record_async (&rect,
+                                 screenshot_config->video_length,
+                                 screenshot_config->include_pointer,
+                                 format, path,
+                                 video_recorded_cb, self);
+}
+
 static gboolean
 take_screenshot_timeout (gpointer user_data)
 {
   ScreenshotApplication *self = user_data;
-  finish_take_screenshot (self);
+
+  if (screenshot_config->take_video)
+    start_take_video (self);
+  else
+    finish_take_screenshot (self);
 
   return FALSE;
 }
@@ -624,6 +972,9 @@ static const GOptionEntry entries[] = {
   { "border-effect", 'e', 0, G_OPTION_ARG_STRING, NULL, N_("Effect to add to the border (‘shadow’, ‘border’, ‘vintage’ or ‘none’). Note: This option is deprecated and is assumed to be ‘none’"), N_("effect") },
   { "interactive", 'i', 0, G_OPTION_ARG_NONE, NULL, N_("Interactively set options"), NULL },
   { "file", 'f', 0, G_OPTION_ARG_FILENAME, NULL, N_("Save screenshot directly to this file"), N_("filename") },
+  { "video", 'v', 0, G_OPTION_ARG_NONE, NULL, N_("Record a videoshot instead of taking a screenshot"), NULL },
+  { "length", 'l', 0, G_OPTION_ARG_INT, NULL, N_("Record the videoshot for the specified length [in seconds]"), N_("seconds") },
+  { "stop", 's', 0, G_OPTION_ARG_NONE, NULL, N_("Stop the videoshot that is being recorded"), NULL },
   { "version", 0, 0, G_OPTION_ARG_NONE, &version_arg, N_("Print version information and exit"), NULL },
   { NULL },
 };
@@ -656,6 +1007,9 @@ screenshot_application_command_line (GApplication            *app,
   gchar *border_effect_arg = NULL;
   guint delay_arg = 0;
   gchar *file_arg = NULL;
+  gboolean video_arg = FALSE;
+  gboolean stop_arg = FALSE;
+  gint length_arg = 0;
   GVariantDict *options;
   gint exit_status = EXIT_SUCCESS;
   gboolean res;
@@ -671,6 +1025,15 @@ screenshot_application_command_line (GApplication            *app,
   g_variant_dict_lookup (options, "border-effect", "&s", &border_effect_arg);
   g_variant_dict_lookup (options, "delay", "i", &delay_arg);
   g_variant_dict_lookup (options, "file", "^&ay", &file_arg);
+  g_variant_dict_lookup (options, "video", "b", &video_arg);
+  g_variant_dict_lookup (options, "length", "i", &length_arg);
+  g_variant_dict_lookup (options, "stop", "b", &stop_arg);
+
+  if (stop_arg)
+    {
+      screenshot_video_stop ();
+      goto out;
+    }
 
   res = screenshot_config_parse_command_line (clipboard_arg,
                                               window_arg,
@@ -681,7 +1044,9 @@ screenshot_application_command_line (GApplication            *app,
                                               border_effect_arg,
                                               delay_arg,
                                               interactive_arg,
-                                              file_arg);
+                                              file_arg,
+                                              video_arg,
+                                              MAX (length_arg, 0));
   if (!res)
     {
       exit_status = EXIT_FAILURE;
@@ -737,6 +1102,15 @@ action_help (GSimpleAction *action,
 }
 
 static void
+action_preferences (GSimpleAction *action,
+                    GVariant *parameter,
+                    gpointer user_data)
+{
+  GList *windows = gtk_application_get_windows (GTK_APPLICATION (user_data));
+  screenshot_show_preferences (g_list_nth_data (windows, 0));
+}
+
+static void
 action_about (GSimpleAction *action,
               GVariant *parameter,
               gpointer user_data)
@@ -746,6 +1120,7 @@ action_about (GSimpleAction *action,
     "Jonathan Blandford",
     "Cosimo Cecchi",
     "Alexander Mikhaylenko",
+    "Roy-Åke Martinsson",
     NULL
   };
 
@@ -760,8 +1135,8 @@ action_about (GSimpleAction *action,
                          "version", VERSION,
                          "authors", authors,
                          "artists", artists,
-                         "program-name", _("Screenshot"),
-                         "comments", _("Save images of your screen or individual windows"),
+                         "program-name", _("Videoshot"),
+                         "comments", _("Save images and video clips of your screen or individual windows"),
                          "logo-icon-name", SCREENSHOT_ICON_NAME,
                          "translator-credits", _("translator-credits"),
                          "license-type", GTK_LICENSE_GPL_2_0,
@@ -785,7 +1160,9 @@ action_screen_shot (GSimpleAction *action,
                                         NULL,  /* border effect */
                                         0,     /* delay */
                                         FALSE, /* interactive */
-                                        NULL); /* file */
+                                        NULL,  /* file */
+                                        FALSE, /* video */
+                                        0);    /* length */
   screenshot_start (self);
 }
 
@@ -805,13 +1182,16 @@ action_window_shot (GSimpleAction *action,
                                         NULL,  /* border effect */
                                         0,     /* delay */
                                         FALSE, /* interactive */
-                                        NULL); /* file */
+                                        NULL,  /* file */
+                                        FALSE, /* video */
+                                        0);    /* length */
   screenshot_start (self);
 }
 
 static GActionEntry action_entries[] = {
   { "about", action_about, NULL, NULL, NULL },
   { "help", action_help, NULL, NULL, NULL },
+  { "preferences", action_preferences, NULL, NULL, NULL },
   { "quit", action_quit, NULL, NULL, NULL },
   { "screen-shot", action_screen_shot, NULL, NULL, NULL },
   { "window-shot", action_window_shot, NULL, NULL, NULL }
@@ -832,7 +1212,7 @@ screenshot_application_startup (GApplication *app)
 
   screenshot_load_config ();
 
-  g_set_application_name (_("Screenshot"));
+  g_set_application_name (_("Videoshot"));
   gtk_window_set_default_icon_name (SCREENSHOT_ICON_NAME);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), action_entries,
@@ -846,6 +1226,13 @@ static void
 screenshot_application_activate (GApplication *app)
 {
   GtkWindow *window;
+
+  /* launching the application again is the way to stop a recording */
+  if (screenshot_video_is_recording ())
+    {
+      screenshot_video_stop ();
+      return;
+    }
 
   window = gtk_application_get_active_window (GTK_APPLICATION (app));
   if (window != NULL)
@@ -867,6 +1254,8 @@ screenshot_application_finalize (GObject *object)
   g_clear_object (&self->screenshot);
   g_free (self->icc_profile_base64);
   g_free (self->save_uri);
+  g_free (self->video_path);
+  g_free (self->video_format);
   g_clear_pointer (&self->rectangle, g_free);
 
   G_OBJECT_CLASS (screenshot_application_parent_class)->finalize (object);
@@ -896,7 +1285,7 @@ ScreenshotApplication *
 screenshot_application_new (void)
 {
   return g_object_new (SCREENSHOT_TYPE_APPLICATION,
-                       "application-id", "org.gnome.Screenshot",
+                       "application-id", "com.royake.Videoshot",
                        "flags", G_APPLICATION_HANDLES_COMMAND_LINE,
                        NULL);
 }

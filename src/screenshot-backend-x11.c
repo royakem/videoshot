@@ -3,6 +3,7 @@
  * Copyright (C) 2001-2006  Jonathan Blandford <jrb@alum.mit.edu>
  * Copyright (C) 2008 Cosimo Cecchi <cosimoc@gnome.org>
  * Copyright (C) 2020 Alexander Mikhaylenko <alexm@gnome.org>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -341,6 +342,45 @@ screenshot_fallback_find_current_window (void)
     window = gdk_get_default_root_window ();
 
   return window;
+}
+
+/* Finds the screen rectangle a capture would cover, in device pixels:
+ * the user selection if there is one, the current window in window mode,
+ * the whole screen otherwise.
+ */
+gboolean
+screenshot_backend_x11_get_target_rect (GdkRectangle *rectangle,
+                                        GdkRectangle *rect_out)
+{
+  GdkWindow *root = gdk_get_default_root_window ();
+  GdkRectangle coords, bounds;
+  gint scale;
+
+  if (!GDK_IS_X11_WINDOW (root))
+    return FALSE;
+
+  scale = gdk_window_get_scale_factor (root);
+
+  if (rectangle != NULL)
+    coords = *rectangle;
+  else
+    screenshot_fallback_get_window_rect_coords (screenshot_fallback_find_current_window (),
+                                                NULL, &coords);
+
+  bounds.x = 0;
+  bounds.y = 0;
+  bounds.width = gdk_window_get_width (root);
+  bounds.height = gdk_window_get_height (root);
+
+  if (!gdk_rectangle_intersect (&coords, &bounds, &coords))
+    return FALSE;
+
+  rect_out->x = coords.x * scale;
+  rect_out->y = coords.y * scale;
+  rect_out->width = coords.width * scale;
+  rect_out->height = coords.height * scale;
+
+  return TRUE;
 }
 
 static GdkPixbuf *

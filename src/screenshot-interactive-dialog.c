@@ -4,6 +4,7 @@
  * Copyright (C) 2006 Emmanuele Bassi <ebassi@gnome.org>
  * Copyright (C) 2008, 2011 Cosimo Cecchi <cosimoc@gnome.org>
  * Copyright (C) 2013 Nils Dagsson Moskopp <nils@dieweltistgarnichtso.net>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -42,6 +43,7 @@ struct _ScreenshotInteractiveDialog
   GtkWidget *pointer;
   GtkWidget *pointer_row;
   GtkAdjustment *delay_adjustment;
+  GtkAdjustment *length_adjustment;
   GtkWidget *window;
   GtkWidget *selection;
 };
@@ -100,6 +102,13 @@ delay_spin_value_changed_cb (GtkSpinButton               *button,
 }
 
 static void
+length_spin_value_changed_cb (GtkSpinButton               *button,
+                              ScreenshotInteractiveDialog *self)
+{
+  screenshot_config->video_length = gtk_spin_button_get_value_as_int (button);
+}
+
+static void
 include_pointer_toggled_cb (GtkSwitch                   *toggle,
                             ScreenshotInteractiveDialog *self)
 {
@@ -111,6 +120,15 @@ static void
 capture_button_clicked_cb (GtkButton                   *button,
                            ScreenshotInteractiveDialog *self)
 {
+  screenshot_config->take_video = FALSE;
+  g_signal_emit (self, signals[SIGNAL_CAPTURE], 0);
+}
+
+static void
+video_button_clicked_cb (GtkButton                   *button,
+                         ScreenshotInteractiveDialog *self)
+{
+  screenshot_config->take_video = TRUE;
   g_signal_emit (self, signals[SIGNAL_CAPTURE], 0);
 }
 
@@ -129,18 +147,21 @@ screenshot_interactive_dialog_class_init (ScreenshotInteractiveDialogClass *klas
                   0);
 
   gtk_widget_class_set_template_from_resource (widget_class,
-                                               "/org/gnome/Screenshot/ui/screenshot-interactive-dialog.ui");
+                                               "/com/royake/Videoshot/ui/screenshot-interactive-dialog.ui");
   gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, listbox);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, pointer);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, pointer_row);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, delay_adjustment);
+  gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, length_adjustment);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, window);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotInteractiveDialog, selection);
   gtk_widget_class_bind_template_callback (widget_class, screen_toggled_cb);
   gtk_widget_class_bind_template_callback (widget_class, window_toggled_cb);
   gtk_widget_class_bind_template_callback (widget_class, selection_toggled_cb);
   gtk_widget_class_bind_template_callback (widget_class, delay_spin_value_changed_cb);
+  gtk_widget_class_bind_template_callback (widget_class, length_spin_value_changed_cb);
   gtk_widget_class_bind_template_callback (widget_class, include_pointer_toggled_cb);
+  gtk_widget_class_bind_template_callback (widget_class, video_button_clicked_cb);
   gtk_widget_class_bind_template_callback (widget_class, capture_button_clicked_cb);
 }
 
@@ -159,6 +180,7 @@ screenshot_interactive_dialog_init (ScreenshotInteractiveDialog *self)
   gtk_switch_set_active (GTK_SWITCH (self->pointer), screenshot_config->include_pointer);
 
   gtk_adjustment_set_value (self->delay_adjustment, (gdouble) screenshot_config->delay);
+  gtk_adjustment_set_value (self->length_adjustment, (gdouble) screenshot_config->video_length);
 }
 
 ScreenshotInteractiveDialog *

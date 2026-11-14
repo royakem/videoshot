@@ -1,6 +1,7 @@
 /* screenshot-dialog.h - main GNOME Screenshot dialog
  *
  * Copyright (C) 2001-2006  Jonathan Blandford <jrb@alum.mit.edu>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -30,6 +31,10 @@ G_DECLARE_FINAL_TYPE (ScreenshotDialog, screenshot_dialog, SCREENSHOT, DIALOG, H
 ScreenshotDialog *screenshot_dialog_new          (GtkApplication *app,
                                                   GdkPixbuf      *screenshot,
                                                   char           *initial_uri);
+
+void              screenshot_dialog_set_video        (ScreenshotDialog *dialog,
+                                                      const gchar      *format);
+const gchar      *screenshot_dialog_get_video_format (ScreenshotDialog *dialog);
 
 char             *screenshot_dialog_get_uri      (ScreenshotDialog *dialog);
 char             *screenshot_dialog_get_folder   (ScreenshotDialog *dialog);

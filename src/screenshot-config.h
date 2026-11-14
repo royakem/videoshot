@@ -1,6 +1,7 @@
 /* screenshot-config.h - Holds current configuration for gnome-screenshot
  *
  * Copyright (C) 2008, 2011 Cosimo Cecchi <cosimoc@gnome.org>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -41,6 +42,9 @@ typedef struct {
 
   guint delay;
 
+  gboolean take_video;
+  guint video_length;
+
   gboolean interactive;
   gboolean activated;
 } ScreenshotConfig;
@@ -58,6 +62,8 @@ gboolean    screenshot_config_parse_command_line  (gboolean clipboard_arg,
                                                    const gchar *border_effect_arg,
                                                    guint delay_arg,
                                                    gboolean interactive_arg,
-                                                   const gchar *file_arg);
+                                                   const gchar *file_arg,
+                                                   gboolean video_arg,
+                                                   guint length_arg);
 
 G_END_DECLS

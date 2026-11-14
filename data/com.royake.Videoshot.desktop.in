@@ -1,26 +1,22 @@
 [Desktop Entry]
-Name=Screenshot
-Comment=Save images of your screen or individual windows
+Name=Videoshot
+Comment=Save images and video clips of your screen or individual windows
 # Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-Keywords=snapshot;capture;print;screenshot;
-Exec=gnome-screenshot --interactive
+Keywords=snapshot;capture;print;screenshot;video;record;screencast;gif;
+Exec=videoshot --interactive
 Terminal=false
 Type=Application
 # Translators: Do NOT translate or transliterate this text (this is an icon file name)!
-Icon=org.gnome.Screenshot
+Icon=com.royake.Videoshot
 StartupNotify=true
-Categories=GTK;GNOME;Utility;X-GNOME-Utilities;
-NotShowIn=KDE;
-X-GNOME-Bugzilla-Bugzilla=GNOME
-X-GNOME-Bugzilla-Product=gnome-utils
-X-GNOME-Bugzilla-Component=screenshot
+Categories=GTK;Utility;
 Actions=screen-shot;window-shot;
 DBusActivatable=true
 
 [Desktop Action screen-shot]
 Name=Take a Screenshot of the Whole Screen
-Exec=gnome-screenshot
+Exec=videoshot
 
 [Desktop Action window-shot]
 Name=Take a Screenshot of the Current Window
-Exec=gnome-screenshot -w
+Exec=videoshot -w

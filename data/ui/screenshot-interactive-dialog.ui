@@ -29,6 +29,18 @@
               </object>
             </child>
             <child>
+              <object class="GtkButton" id="video_button">
+                <property name="label" translatable="yes">Take _Videoshot</property>
+                <property name="visible">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_underline">True</property>
+                <signal name="clicked" handler="video_button_clicked_cb"/>
+                <style>
+                  <class name="destructive-action"/>
+                </style>
+              </object>
+            </child>
+            <child>
               <object class="GtkMenuButton" id="menu">
                 <property name="visible">True</property>
                 <property name="receives_default">True</property>
@@ -217,6 +229,27 @@
                     </child>
                   </object>
                 </child>
+                <child>
+                  <object class="HdyActionRow">
+                    <property name="visible">True</property>
+                    <property name="title" translatable="yes">Le_ngth in Seconds</property>
+                    <property name="subtitle" translatable="yes">How long a videoshot records</property>
+                    <property name="use_underline">True</property>
+                    <property name="activatable-widget">length</property>
+                    <child>
+                      <object class="GtkSpinButton" id="length">
+                        <property name="visible">True</property>
+                        <property name="input_purpose">number</property>
+                        <property name="adjustment">length_adjustment</property>
+                        <property name="climb_rate">1</property>
+                        <property name="snap_to_ticks">True</property>
+                        <property name="numeric">True</property>
+                        <property name="valign">center</property>
+                        <signal name="value-changed" handler="length_spin_value_changed_cb"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </child>
           </object>
@@ -230,7 +263,20 @@
     <property name="step-increment">1</property>
     <property name="page-increment">1</property>
   </object>
+  <object class="GtkAdjustment" id="length_adjustment">
+    <property name="lower">1</property>
+    <property name="upper">3600</property>
+    <property name="value">10</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">10</property>
+  </object>
   <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="action">app.preferences</attribute>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+      </item>
+    </section>
     <section>
       <item>
         <attribute name="action">app.help</attribute>
@@ -238,7 +284,7 @@
       </item>
       <item>
         <attribute name="action">app.about</attribute>
-        <attribute name="label" translatable="yes">_About Screenshot</attribute>
+        <attribute name="label" translatable="yes">_About Videoshot</attribute>
       </item>
     </section>
   </menu>

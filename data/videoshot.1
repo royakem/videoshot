@@ -1,13 +1,15 @@
-.TH "GNOME-SCREENSHOT" "1" "August 10, 2013" "" ""
+.TH "VIDEOSHOT" "1" "November 14, 2026" "" ""
 .SH NAME
-gnome-screenshot \- capture the screen, a window, or an user-defined area and save the snapshot image to a file.
+videoshot \- capture the screen, a window, or an user-defined area and save the snapshot image or a video clip to a file.
 .SH SYNOPSIS
 .sp
-\fBgnome-screenshot\fR [ \fB-c\fR ]  [ \fB-w\fR ]  [ \fB-a\fR ]  [ \fB-b\fR ]  [ \fB-B\fR ]  [ \fB-p\fR ]  [ \fB-d \fISECONDS\fB \fR ]  [ \fB-e \fIEFFECT\fB \fR ]  [ \fB-i\fR ]  [ \fB-f \fIFILENAME\fB \fR ]  [ \fB--display \fIDISPLAY\fB \fR ]
+\fBvideoshot\fR [ \fB-c\fR ]  [ \fB-w\fR ]  [ \fB-a\fR ]  [ \fB-b\fR ]  [ \fB-B\fR ]  [ \fB-p\fR ]  [ \fB-d \fISECONDS\fB \fR ]  [ \fB-e \fIEFFECT\fB \fR ]  [ \fB-i\fR ]  [ \fB-f \fIFILENAME\fB \fR ]  [ \fB-v\fR ]  [ \fB-l \fISECONDS\fB \fR ]  [ \fB-s\fR ]  [ \fB--display \fIDISPLAY\fB \fR ]
 .SH "DESCRIPTION"
 .PP
-\fBgnome-screenshot\fR is a GNOME utility for taking
-screenshots of the entire screen, a window or a user-defined area of the screen.
+\fBvideoshot\fR is a utility for taking
+screenshots and short video clips (videoshots) of the entire screen, a window
+or a user-defined area of the screen. It is a fork of gnome-screenshot.
+Videoshots are recorded with ffmpeg and need an X11 session.
 .SH "OPTIONS"
 .TP
 \fB-c, --clipboard\fR
@@ -49,6 +51,16 @@ Interactively set options in a dialog.
 .TP
 \fB-f, --file=\fIFILENAME\fB\fR
 Save screenshot directly to this file.
+.TP
+\fB-v, --video\fR
+Record a videoshot instead of taking a screenshot. With \fB--file\fR the
+format follows the file name ending (mp4, webm, mkv or gif).
+.TP
+\fB-l, --length=\fISECONDS\fB\fR
+Record the videoshot for the specified length [in seconds].
+.TP
+\fB-s, --stop\fR
+Stop the videoshot that is being recorded. What was recorded is kept.
 .TP
 \fB--display=\fIDISPLAY\fB\fR
 X display to use.

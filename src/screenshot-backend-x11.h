@@ -1,6 +1,7 @@
 /* screenshot-backend-x11.h - Fallback X11 backend
  *
  * Copyright (C) 2020 Alexander Mikhaylenko <alexm@gnome.org>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -20,6 +21,7 @@
 #pragma once
 
 #include <glib-object.h>
+#include <gdk/gdk.h>
 #include "screenshot-backend.h"
 
 G_BEGIN_DECLS
@@ -29,5 +31,8 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (ScreenshotBackendX11, screenshot_backend_x11, SCREENSHOT, BACKEND_X11, GObject)
 
 ScreenshotBackend *screenshot_backend_x11_new (void);
+
+gboolean           screenshot_backend_x11_get_target_rect (GdkRectangle *rectangle,
+                                                           GdkRectangle *rect_out);
 
 G_END_DECLS

@@ -1,7 +1,7 @@
 project(
-  'gnome-screenshot',
+  'videoshot',
   'c',
-  version: '41.0',
+  version: '0.1.0',
   license: 'GPLv2+',
   meson_version: '>= 0.50.0',
   default_options: [
@@ -19,15 +19,15 @@ add_project_arguments([
 
 cc = meson.get_compiler('c')
 
-gnome_screenshot_prefix = get_option('prefix')
-gnome_screenshot_bindir = join_paths(gnome_screenshot_prefix, get_option('bindir'))
-gnome_screenshot_datadir = join_paths(gnome_screenshot_prefix, get_option('datadir'))
-gnome_screenshot_libexecdir = join_paths(gnome_screenshot_prefix, get_option('libexecdir'))
-gnome_screenshot_localedir = join_paths(gnome_screenshot_datadir, 'locale')
-gnome_screenshot_appsdir = join_paths(gnome_screenshot_datadir, 'applications')
-gnome_screenshot_appdatadir = join_paths(gnome_screenshot_datadir, 'metainfo')
-gnome_screenshot_servicesdir = join_paths(gnome_screenshot_datadir, 'dbus-1', 'services')
-gnome_screenshot_schemadir = join_paths(gnome_screenshot_datadir, 'glib-2.0', 'schemas')
+videoshot_prefix = get_option('prefix')
+videoshot_bindir = join_paths(videoshot_prefix, get_option('bindir'))
+videoshot_datadir = join_paths(videoshot_prefix, get_option('datadir'))
+videoshot_libexecdir = join_paths(videoshot_prefix, get_option('libexecdir'))
+videoshot_localedir = join_paths(videoshot_datadir, 'locale')
+videoshot_appsdir = join_paths(videoshot_datadir, 'applications')
+videoshot_appdatadir = join_paths(videoshot_datadir, 'metainfo')
+videoshot_servicesdir = join_paths(videoshot_datadir, 'dbus-1', 'services')
+videoshot_schemadir = join_paths(videoshot_datadir, 'glib-2.0', 'schemas')
 
 glib_req_version = '>= 2.35.1'
 gtk_req_version = '>= 3.12.0'

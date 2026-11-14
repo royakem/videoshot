@@ -1,11 +1,17 @@
-<schemalist gettext-domain="gnome-screenshot">
- <enum id="org.gnome.gnome-screenshot.file-types">
+<schemalist gettext-domain="videoshot">
+ <enum id="com.royake.videoshot.file-types">
     <value nick="bmp" value="0"/>
     <value nick="jpg" value="1"/>
     <value nick="png" value="2"/>
     <value nick="tiff" value="3"/>
   </enum>
-  <schema id="org.gnome.gnome-screenshot" path="/org/gnome/gnome-screenshot/" gettext-domain="gnome-screenshot">
+  <enum id="com.royake.videoshot.video-formats">
+    <value nick="mp4" value="0"/>
+    <value nick="webm" value="1"/>
+    <value nick="mkv" value="2"/>
+    <value nick="gif" value="3"/>
+  </enum>
+  <schema id="com.royake.videoshot" path="/com/royake/videoshot/" gettext-domain="videoshot">
     <key name="take-window-shot" type="b">
       <default>false</default>
       <summary>Window-specific screenshot (deprecated)</summary>
@@ -36,10 +42,26 @@
       <summary>Include ICC Profile</summary>
       <description>Include the ICC profile of the target in the screenshot file</description>
     </key>
-    <key name="default-file-type" enum="org.gnome.gnome-screenshot.file-types">
+    <key name="default-file-type" enum="com.royake.videoshot.file-types">
       <default>'png'</default>
       <summary>Default file type extension</summary>
       <description>The default file type extension for screenshots.</description>
+    </key>
+    <key name="video-length" type="i">
+      <range min="1" max="3600"/>
+      <default>10</default>
+      <summary>Videoshot length</summary>
+      <description>The number of seconds a videoshot records.</description>
+    </key>
+    <key name="video-format" enum="com.royake.videoshot.video-formats">
+      <default>'mp4'</default>
+      <summary>Videoshot output format</summary>
+      <description>The file format videoshots are saved in.</description>
+    </key>
+    <key name="video-save-directory" type="s">
+      <default>''</default>
+      <summary>Videoshot directory</summary>
+      <description>The directory where videoshots are saved. The Videos folder is used when this is empty.</description>
     </key>
   </schema>
 </schemalist>

@@ -1,6 +1,7 @@
 /* screenshot-dialog.c - main GNOME Screenshot dialog
  *
  * Copyright (C) 2001-2006  Jonathan Blandford <jrb@alum.mit.edu>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -22,6 +23,7 @@
 #include "screenshot-config.h"
 #include "screenshot-dialog.h"
 #include "screenshot-utils.h"
+#include "screenshot-video.h"
 #include <glib/gi18n.h>
 #include <gio/gio.h>
 #include <string.h>
@@ -37,6 +39,8 @@ struct _ScreenshotDialog
   GtkWidget *save_widget;
   GtkWidget *filename_entry;
   GtkWidget *preview_darea;
+  GtkWidget *format_label;
+  GtkWidget *format_combo;
 
   gint drag_x;
   gint drag_y;
@@ -193,6 +197,32 @@ copy_clicked_cb (GtkButton        *button,
   g_signal_emit (self, signals[SIGNAL_COPY], 0);
 }
 
+/* Keeps the ending of the file name in step with the chosen video format. */
+static void
+format_changed_cb (GtkComboBox      *combo,
+                   ScreenshotDialog *self)
+{
+  const gchar *format = gtk_combo_box_get_active_id (combo);
+  const gchar *name = gtk_entry_get_text (GTK_ENTRY (self->filename_entry));
+  const gchar *ext = strrchr (name, '.');
+  g_autofree gchar *stem = NULL, *new_name = NULL;
+
+  if (format == NULL || !gtk_widget_get_visible (GTK_WIDGET (combo)))
+    return;
+
+  if (ext != NULL && g_ascii_strcasecmp (ext + 1, format) == 0)
+    return;
+
+  /* only an ending that names a video format is replaced */
+  if (ext != NULL && screenshot_video_format_for_path (name) != NULL)
+    stem = g_strndup (name, ext - name);
+  else
+    stem = g_strdup (name);
+
+  new_name = g_strdup_printf ("%s.%s", stem, format);
+  gtk_entry_set_text (GTK_ENTRY (self->filename_entry), new_name);
+}
+
 static void
 screenshot_dialog_class_init (ScreenshotDialogClass *klass)
 {
@@ -226,10 +256,13 @@ screenshot_dialog_class_init (ScreenshotDialogClass *klass)
                   0);
 
   gtk_widget_class_set_template_from_resource (widget_class,
-                                               "/org/gnome/Screenshot/ui/screenshot-dialog.ui");
+                                               "/com/royake/Videoshot/ui/screenshot-dialog.ui");
   gtk_widget_class_bind_template_child (widget_class, ScreenshotDialog, filename_entry);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotDialog, save_widget);
   gtk_widget_class_bind_template_child (widget_class, ScreenshotDialog, preview_darea);
+  gtk_widget_class_bind_template_child (widget_class, ScreenshotDialog, format_label);
+  gtk_widget_class_bind_template_child (widget_class, ScreenshotDialog, format_combo);
+  gtk_widget_class_bind_template_callback (widget_class, format_changed_cb);
   gtk_widget_class_bind_template_callback (widget_class, key_press_cb);
   gtk_widget_class_bind_template_callback (widget_class, back_clicked_cb);
   gtk_widget_class_bind_template_callback (widget_class, save_clicked_cb);
@@ -298,6 +331,35 @@ screenshot_dialog_new (GtkApplication *app,
                               pos);
 
   return self;
+}
+
+/* Turns the dialog into the result window of a videoshot: the preview is
+ * a still of the video, and a format can be chosen.
+ */
+void
+screenshot_dialog_set_video (ScreenshotDialog *self,
+                             const gchar      *format)
+{
+  const ScreenshotVideoFormat *formats;
+  guint n_formats, i;
+
+  /* the still is not the video, so it is not offered for dragging */
+  gtk_drag_source_unset (self->preview_darea);
+
+  formats = screenshot_video_get_formats (&n_formats);
+  for (i = 0; i < n_formats; i++)
+    gtk_combo_box_text_append (GTK_COMBO_BOX_TEXT (self->format_combo),
+                               formats[i].id, _(formats[i].name));
+  gtk_combo_box_set_active_id (GTK_COMBO_BOX (self->format_combo), format);
+
+  gtk_widget_show (self->format_label);
+  gtk_widget_show (self->format_combo);
+}
+
+const gchar *
+screenshot_dialog_get_video_format (ScreenshotDialog *self)
+{
+  return gtk_combo_box_get_active_id (GTK_COMBO_BOX (self->format_combo));
 }
 
 char *

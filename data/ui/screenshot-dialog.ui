@@ -129,6 +129,31 @@
                     <property name="top_attach">1</property>
                   </packing>
                 </child>
+                <child>
+                  <object class="GtkLabel" id="format_label">
+                    <property name="visible">False</property>
+                    <property name="no_show_all">True</property>
+                    <property name="halign">end</property>
+                    <property name="label" translatable="yes">For_mat:</property>
+                    <property name="use_underline">True</property>
+                    <property name="mnemonic_widget">format_combo</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="format_combo">
+                    <property name="visible">False</property>
+                    <property name="no_show_all">True</property>
+                    <signal name="changed" handler="format_changed_cb"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">2</property>
+                  </packing>
+                </child>
               </object>
             </child>
           </object>

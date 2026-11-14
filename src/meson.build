@@ -1,5 +1,5 @@
 sources = [
-  'gnome-screenshot.c',
+  'videoshot.c',
 
   'cheese-flash.c',
 
@@ -12,7 +12,9 @@ sources = [
   'screenshot-dialog.c',
   'screenshot-filename-builder.c',
   'screenshot-interactive-dialog.c',
+  'screenshot-preferences.c',
   'screenshot-utils.c',
+  'screenshot-video.c',
 ]
 
 include_directories = [
@@ -30,11 +32,11 @@ dependencies = [
 ]
 
 c_args = [
-  '-DLOCALEDIR="@0@"'.format(gnome_screenshot_localedir),
+  '-DLOCALEDIR="@0@"'.format(videoshot_localedir),
 ]
 
 executable(
-  'gnome-screenshot',
+  'videoshot',
   sources + resources,
   include_directories: include_directories,
   dependencies: dependencies,

@@ -1,9 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: gnome-screenshot
-Source: https://download.gnome.org/sources/gnome-screenshot/
+Upstream-Name: videoshot
+Source: fork of gnome-screenshot, https://download.gnome.org/sources/gnome-screenshot/
 
 Files: *
-Copyright: 2008-2012 Cosimo Cecchi <cosimoc@gnome.org>
+Copyright: 2026 Roy-Åke Martinsson
+           2008-2012 Cosimo Cecchi <cosimoc@gnome.org>
            2006 Emmanuele Bassi <ebassi@gnome.org>
            2001-2006 Jonathan Blandford <jrb@alum.mit.edu>
 License: GPL-2+

@@ -3,6 +3,7 @@
  * Copyright (C) 2001 Jonathan Blandford <jrb@alum.mit.edu>
  * Copyright (C) 2006 Emmanuele Bassi <ebassi@gnome.org>
  * Copyright (C) 2008, 2011 Cosimo Cecchi <cosimoc@gnome.org>
+ * Copyright (C) 2026 Roy-Åke Martinsson (Videoshot changes)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -32,6 +33,7 @@
 #define AUTO_SAVE_DIRECTORY_KEY "auto-save-directory"
 #define LAST_SAVE_DIRECTORY_KEY "last-save-directory"
 #define DEFAULT_FILE_TYPE_KEY   "default-file-type"
+#define VIDEO_LENGTH_KEY        "video-length"
 
 ScreenshotConfig *screenshot_config;
 
@@ -42,7 +44,7 @@ screenshot_load_config (void)
 
   config = g_slice_new0 (ScreenshotConfig);
 
-  config->settings = g_settings_new ("org.gnome.gnome-screenshot");
+  config->settings = g_settings_new ("com.royake.videoshot");
   config->save_dir =
     g_settings_get_string (config->settings,
                            LAST_SAVE_DIRECTORY_KEY);
@@ -59,8 +61,13 @@ screenshot_load_config (void)
     g_settings_get_boolean (config->settings,
                             INCLUDE_ICC_PROFILE);
 
+  config->video_length =
+    g_settings_get_int (config->settings,
+                        VIDEO_LENGTH_KEY);
+
   config->take_window_shot = FALSE;
   config->take_area_shot = FALSE;
+  config->take_video = FALSE;
   config->activated = FALSE;
 
   screenshot_config = config;
@@ -83,6 +90,8 @@ screenshot_save_config (void)
                           INCLUDE_POINTER_KEY, c->include_pointer);
 
   g_settings_set_int (c->settings, DELAY_KEY, c->delay);
+
+  g_settings_set_int (c->settings, VIDEO_LENGTH_KEY, c->video_length);
 }
 
 gboolean
@@ -95,8 +104,17 @@ screenshot_config_parse_command_line (gboolean clipboard_arg,
                                       const gchar *border_effect_arg,
                                       guint delay_arg,
                                       gboolean interactive_arg,
-                                      const gchar *file_arg)
+                                      const gchar *file_arg,
+                                      gboolean video_arg,
+                                      guint length_arg)
 {
+  if (video_arg && clipboard_arg)
+    {
+      g_printerr (_("Conflicting options: --video and --clipboard should not be "
+                    "used at the same time.\n"));
+      return FALSE;
+    }
+
   if (window_arg && area_arg)
     {
       g_printerr (_("Conflicting options: --window and --area should not be "
@@ -144,6 +162,13 @@ screenshot_config_parse_command_line (gboolean clipboard_arg,
 
   screenshot_config->take_window_shot = window_arg;
   screenshot_config->take_area_shot = area_arg;
+  screenshot_config->take_video = video_arg;
+
+  if (length_arg > 0)
+    screenshot_config->video_length = length_arg;
+  else if (!screenshot_config->interactive)
+    screenshot_config->video_length =
+      g_settings_get_int (screenshot_config->settings, VIDEO_LENGTH_KEY);
 
   return TRUE;
 }

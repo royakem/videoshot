@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.royake.Videoshot.desktop</id>
+  <launchable type="desktop-id">com.royake.Videoshot.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0+</project_license>
+  <name>Videoshot</name>
+  <summary>Save images and video clips of your screen or individual windows</summary>
+  <description>
+    <p>
+      Videoshot takes pictures and short video clips of your computer screen.
+      Both can be of your whole screen, a window, or a selected rectangular area.
+    </p>
+    <p>
+      A videoshot records for the length you set and is saved as MP4, WebM,
+      Matroska or animated GIF. Screenshots and videoshots can be saved to a
+      file or copied to the clipboard and pasted into other applications.
+    </p>
+    <p>
+      Videoshot is a fork of GNOME Screenshot as shipped by Linux Mint.
+    </p>
+  </description>
+  <url type="homepage">https://royake.com</url>
+  <kudos>
+    <kudo>HiDpiIcon</kudo>
+    <kudo>ModernToolkit</kudo>
+  </kudos>
+  <releases>
+    <release version="0.1.0" type="development" date="2026-11-14">
+      <description>
+        <p>First version: GNOME Screenshot 41.0 (Linux Mint) with videoshots added.</p>
+      </description>
+    </release>
+  </releases>
+  <developer_name>Roy-Åke Martinsson</developer_name>
+  <translation type="gettext">videoshot</translation>
+  <content_rating type="oars-1.0" />
+</component>
