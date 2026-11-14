@@ -36,7 +36,9 @@ libhandy_req_version = '>= 1.5.0'
 mathlib_dep = cc.find_library('m', required: false)
 x11_dep = dependency('x11', required: get_option ('x11'))
 xext_dep = dependency('xext', required: get_option ('x11'))
+xfixes_dep = dependency('xfixes', required: get_option ('x11'))
 glib_dep = dependency('glib-2.0', version: glib_req_version)
+gio_unix_dep = dependency('gio-unix-2.0', version: glib_req_version)
 gtk_dep = dependency('gtk+-3.0', version: gtk_req_version)
 libhandy_dep = dependency('libhandy-1', version: libhandy_req_version)
 
@@ -44,7 +46,7 @@ config_h = configuration_data()
 config_h.set_quoted('VERSION', meson.project_version())
 config_h.set_quoted('GETTEXT_PACKAGE', meson.project_name())
 
-has_x11 = x11_dep.found() and xext_dep.found()
+has_x11 = x11_dep.found() and xext_dep.found() and xfixes_dep.found()
 if has_x11
   config_h.set('HAVE_X11', 1)
 

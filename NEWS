@@ -1,4 +1,15 @@
 =========================================
+Videoshot, changes since 0.1.0-beta1
+=========================================
+
+- Record on Wayland through the desktop portal and PipeWire; the desktop
+  asks what to share (tested on KDE Plasma 6)
+- Take screenshots on Wayland through the desktop portal
+- Fix frames that showed the wallpaper through a window on X11: the screen
+  is now read by videoshot-grab, which reads a frame again until it is whole
+- Copy to Clipboard also offers the file path as text
+
+=========================================
 Videoshot 0.1.0-beta1 - 14th November 2026
 =========================================
 

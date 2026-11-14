@@ -12,6 +12,7 @@ sources = [
   'screenshot-dialog.c',
   'screenshot-filename-builder.c',
   'screenshot-interactive-dialog.c',
+  'screenshot-portal.c',
   'screenshot-preferences.c',
   'screenshot-utils.c',
   'screenshot-video.c',
@@ -27,12 +28,14 @@ dependencies = [
   x11_dep,
   xext_dep,
   glib_dep,
+  gio_unix_dep,
   gtk_dep,
   libhandy_dep
 ]
 
 c_args = [
   '-DLOCALEDIR="@0@"'.format(videoshot_localedir),
+  '-DLIBEXECDIR="@0@"'.format(videoshot_libexecdir),
 ]
 
 executable(
@@ -43,3 +46,14 @@ executable(
   c_args: c_args,
   install: true
 )
+
+# Reads the frames of a video off the X screen
+if has_x11
+  executable(
+    'videoshot-grab',
+    'videoshot-grab.c',
+    dependencies: [x11_dep, xext_dep, xfixes_dep],
+    install: true,
+    install_dir: videoshot_libexecdir
+  )
+endif

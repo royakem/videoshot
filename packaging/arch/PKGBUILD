@@ -8,7 +8,12 @@ pkgdesc="Screenshots and short video clips of your screen, a window or a selecti
 arch=('x86_64')
 url="https://github.com/royakem/videoshot"
 license=('GPL-2.0-or-later')
-depends=('gtk3' 'libhandy' 'libx11' 'libxext' 'ffmpeg')
+depends=('gtk3' 'libhandy' 'libx11' 'libxext' 'libxfixes' 'ffmpeg')
+optdepends=('gstreamer: recording on Wayland'
+            'gst-plugins-base: recording on Wayland'
+            'gst-plugins-good: recording on Wayland'
+            'gst-plugin-pipewire: recording on Wayland'
+            'xdg-desktop-portal: screenshots and recording on Wayland')
 makedepends=('meson' 'gettext')
 source=("$pkgname-$_tag.tar.gz::$url/archive/v$_tag.tar.gz")
 sha256sums=('SKIP')

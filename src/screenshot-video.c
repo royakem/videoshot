@@ -22,11 +22,14 @@
 
 #include <errno.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <string.h>
 #include <glib/gi18n.h>
 #include <glib/gstdio.h>
+#include <glib-unix.h>
 
 #include "screenshot-config.h"
+#include "screenshot-portal.h"
 #include "screenshot-video.h"
 
 #ifdef HAVE_X11
@@ -36,13 +39,19 @@
 #define VIDEO_SAVE_DIRECTORY_KEY "video-save-directory"
 #define VIDEO_FRAMERATE          "30"
 #define GIF_FRAMERATE            "15"
+#define CAST_SETTLE_TIME         600 /* milliseconds */
 
 /* Lossless recording a GIF is made from, never shown to the user. */
 #define MASTER_FORMAT            "master"
 
-/* The recording is done by an ffmpeg child process grabbing the X display.
- * It stops by itself after the requested length; stopping early sends it
- * SIGINT, which makes it finish the file properly.
+/* The recording is done by two child processes joined by a pipe. The first
+ * writes plain frames: videoshot-grab reads them off the X screen, and on
+ * Wayland gst-launch-1.0 takes them from the PipeWire stream the desktop
+ * portal hands out. The second is ffmpeg, which encodes them.
+ *
+ * ffmpeg stops by itself after the requested length. Stopping early
+ * interrupts the first process, so ffmpeg sees the end of its input and
+ * finishes the file properly.
  *
  * A GIF needs its palette made from the whole clip, which ffmpeg cannot
  * finish when interrupted. So a GIF is recorded losslessly first and
@@ -58,6 +67,12 @@ static const ScreenshotVideoFormat formats[] = {
 
 typedef struct {
   GSubprocess *process;
+  GSubprocess *source;
+  gchar *messages;
+  gchar *source_messages;
+  GError *error;
+  guint pending;
+  gboolean portal;
   gchar *path;
   gchar *part_path;
   GtkStatusIcon *status_icon;
@@ -66,6 +81,7 @@ typedef struct {
 } Recording;
 
 static Recording *current;
+static gboolean starting;
 
 const ScreenshotVideoFormat *
 screenshot_video_get_formats (guint *n_formats)
@@ -98,10 +114,11 @@ screenshot_video_get_target_rect (GdkRectangle *selection,
                                   GdkRectangle *rect_out)
 {
 #ifdef HAVE_X11
-  return screenshot_backend_x11_get_target_rect (selection, rect_out);
-#else
-  return FALSE;
+  if (!screenshot_portal_is_wayland ())
+    return screenshot_backend_x11_get_target_rect (selection, rect_out);
 #endif
+
+  return FALSE;
 }
 
 /* The folder videoshots are saved in, as a path. */
@@ -225,26 +242,27 @@ static void
 recording_free (Recording *recording)
 {
   g_clear_object (&recording->process);
+  g_clear_object (&recording->source);
   g_clear_object (&recording->status_icon);
+  g_clear_error (&recording->error);
+  g_free (recording->messages);
+  g_free (recording->source_messages);
   g_free (recording->path);
   g_free (recording->part_path);
   g_free (recording);
 }
 
 static void
-recording_finished_cb (GObject      *source,
-                       GAsyncResult *res,
-                       gpointer      user_data)
+recording_done (Recording *recording)
 {
-  Recording *recording = user_data;
-  g_autoptr(GError) error = NULL;
-  g_autofree gchar *messages = NULL;
+  g_autoptr(GError) error = g_steal_pointer (&recording->error);
   GStatBuf info;
-
-  g_subprocess_communicate_utf8_finish (G_SUBPROCESS (source), res, NULL, &messages, &error);
 
   if (current == recording)
     current = NULL;
+
+  if (recording->portal)
+    screenshot_portal_cast_close ();
 
   /* A recording stopped early ends with a non-zero status but leaves a
    * finished file behind, so the file is what tells success from failure.
@@ -252,8 +270,11 @@ recording_finished_cb (GObject      *source,
   if (error == NULL &&
       (g_stat (recording->part_path, &info) != 0 || info.st_size == 0))
     {
-      if (messages != NULL)
-        g_strstrip (messages);
+      const gchar *messages = recording->messages;
+
+      /* without frames ffmpeg has little to say; their source knows why */
+      if (recording->source_messages != NULL && *recording->source_messages != '\0')
+        messages = recording->source_messages;
 
       g_set_error (&error, G_IO_ERROR, G_IO_ERROR_FAILED,
                    "%s", (messages != NULL && *messages != '\0') ?
@@ -271,6 +292,42 @@ recording_finished_cb (GObject      *source,
   recording->callback (error == NULL ? recording->path : NULL, error, recording->user_data);
 
   recording_free (recording);
+}
+
+static void
+recording_finished_cb (GObject      *source,
+                       GAsyncResult *res,
+                       gpointer      user_data)
+{
+  Recording *recording = user_data;
+
+  g_subprocess_communicate_utf8_finish (G_SUBPROCESS (source), res, NULL,
+                                        &recording->messages, &recording->error);
+  if (recording->messages != NULL)
+    g_strstrip (recording->messages);
+
+  /* nobody reads the frames any more */
+  if (recording->source != NULL)
+    g_subprocess_send_signal (recording->source, SIGTERM);
+
+  if (--recording->pending == 0)
+    recording_done (recording);
+}
+
+static void
+source_finished_cb (GObject      *source,
+                    GAsyncResult *res,
+                    gpointer      user_data)
+{
+  Recording *recording = user_data;
+
+  g_subprocess_communicate_utf8_finish (G_SUBPROCESS (source), res, NULL,
+                                        &recording->source_messages, NULL);
+  if (recording->source_messages != NULL)
+    g_strstrip (recording->source_messages);
+
+  if (--recording->pending == 0)
+    recording_done (recording);
 }
 
 static void
@@ -386,15 +443,24 @@ add_format_arguments (GPtrArray   *argv,
 
 /* Runs ffmpeg with the given input arguments, writing @format to @path
  * through a temporary file next to it.
+ *
+ * With @source_argv that program is run as well, and what it writes is
+ * what ffmpeg reads as its standard input. Without @source_fd it writes to
+ * its standard output. Else @source_fd is handed to it as file descriptor
+ * 3 and it writes to file descriptor 4, as gst-launch-1.0 has things of
+ * its own to say on its standard output.
  */
 static Recording *
 run_ffmpeg (GPtrArray               *argv,
+            GPtrArray               *source_argv,
+            gint                     source_fd,
             const gchar             *format,
             const gchar             *path,
             ScreenshotVideoCallback  callback,
             gpointer                 user_data)
 {
   g_autoptr(GError) error = NULL;
+  g_autoptr(GSubprocessLauncher) launcher = NULL, source_launcher = NULL;
   g_autofree gchar *dirname = g_path_get_dirname (path);
   g_autofree gchar *basename = g_path_get_basename (path);
   g_autofree gchar *part_name = g_strdup_printf (".%s.part", basename);
@@ -405,25 +471,80 @@ run_ffmpeg (GPtrArray               *argv,
   recording->part_path = g_build_filename (dirname, part_name, NULL);
   recording->callback = callback;
   recording->user_data = user_data;
+  recording->portal = (source_fd != -1);
 
   add_format_arguments (argv, format);
   g_ptr_array_add (argv, g_strdup (recording->part_path));
   g_ptr_array_add (argv, NULL);
 
-  recording->process = g_subprocess_newv ((const gchar * const *) argv->pdata,
-                                          G_SUBPROCESS_FLAGS_STDOUT_SILENCE |
-                                          G_SUBPROCESS_FLAGS_STDERR_PIPE,
-                                          &error);
+  launcher = g_subprocess_launcher_new (G_SUBPROCESS_FLAGS_STDOUT_SILENCE |
+                                        G_SUBPROCESS_FLAGS_STDERR_PIPE);
+
+  if (source_argv != NULL)
+    {
+      gint fds[2];
+
+      g_ptr_array_add (source_argv, NULL);
+
+      source_launcher = g_subprocess_launcher_new (G_SUBPROCESS_FLAGS_STDERR_PIPE |
+                                                   (source_fd != -1 ?
+                                                    G_SUBPROCESS_FLAGS_STDOUT_SILENCE : 0));
+      if (source_fd != -1)
+        g_subprocess_launcher_take_fd (source_launcher, source_fd, 3);
+
+      if (g_unix_open_pipe (fds, FD_CLOEXEC, &error))
+        {
+          if (source_fd != -1)
+            g_subprocess_launcher_take_fd (source_launcher, fds[1], 4);
+          else
+            g_subprocess_launcher_take_stdout_fd (source_launcher, fds[1]);
+
+          g_subprocess_launcher_take_stdin_fd (launcher, fds[0]);
+
+          recording->source = g_subprocess_launcher_spawnv (source_launcher,
+                                                            (const gchar * const *) source_argv->pdata,
+                                                            &error);
+        }
+
+      /* the launcher holds the writing end of the pipe: let go of it, or
+       * ffmpeg would never see the end of the frames
+       */
+      g_clear_object (&source_launcher);
+
+      if (recording->source == NULL)
+        {
+          g_prefix_error (&error, _("Could not start %s: "),
+                          (const gchar *) g_ptr_array_index (source_argv, 0));
+          callback (NULL, error, user_data);
+          recording_free (recording);
+          return NULL;
+        }
+    }
+
+  recording->process = g_subprocess_launcher_spawnv (launcher,
+                                                     (const gchar * const *) argv->pdata,
+                                                     &error);
   if (recording->process == NULL)
     {
+      if (recording->source != NULL)
+        g_subprocess_force_exit (recording->source);
+
       g_prefix_error (&error, _("Could not start ffmpeg: "));
       callback (NULL, error, user_data);
       recording_free (recording);
       return NULL;
     }
 
+  recording->pending = 1;
   g_subprocess_communicate_utf8_async (recording->process, NULL, NULL,
                                        recording_finished_cb, recording);
+
+  if (recording->source != NULL)
+    {
+      recording->pending++;
+      g_subprocess_communicate_utf8_async (recording->source, NULL, NULL,
+                                           source_finished_cb, recording);
+    }
 
   return recording;
 }
@@ -443,66 +564,113 @@ new_ffmpeg_arguments (void)
   return argv;
 }
 
+/* Records @rect of the X screen or, when that is NULL, @node of the
+ * PipeWire connection @pipewire_fd.
+ */
 static void
-record_x11 (const GdkRectangle      *rect,
-            guint                    length,
-            gboolean                 include_pointer,
-            const gchar             *framerate,
-            const gchar             *format,
-            const gchar             *path,
-            ScreenshotVideoCallback  callback,
-            gpointer                 user_data)
+record (const GdkRectangle      *rect,
+        gint                     pipewire_fd,
+        guint32                  node,
+        guint                    length,
+        gboolean                 include_pointer,
+        const gchar             *framerate,
+        const gchar             *format,
+        const gchar             *path,
+        ScreenshotVideoCallback  callback,
+        gpointer                 user_data)
 {
-  g_autoptr(GPtrArray) argv = NULL;
-  const gchar *display_name = gdk_display_get_name (gdk_display_get_default ());
+  g_autoptr(GPtrArray) argv = new_ffmpeg_arguments ();
+  g_autoptr(GPtrArray) source_argv = g_ptr_array_new_with_free_func (g_free);
   Recording *recording;
 
-  g_return_if_fail (rect != NULL && callback != NULL);
-
-  if (current != NULL)
+  if (rect != NULL)
     {
-      g_autoptr(GError) error = NULL;
+      const gchar *grabber = g_getenv ("VIDEOSHOT_GRAB");
 
-      g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_BUSY,
-                           _("A videoshot is being recorded already"));
-      callback (NULL, error, user_data);
-      return;
+      g_ptr_array_add (source_argv, g_strdup (grabber != NULL ? grabber : LIBEXECDIR "/videoshot-grab"));
+      g_ptr_array_add (source_argv, g_strdup_printf ("%d", rect->x));
+      g_ptr_array_add (source_argv, g_strdup_printf ("%d", rect->y));
+      g_ptr_array_add (source_argv, g_strdup_printf ("%d", rect->width));
+      g_ptr_array_add (source_argv, g_strdup_printf ("%d", rect->height));
+      g_ptr_array_add (source_argv, g_strdup (framerate));
+      g_ptr_array_add (source_argv, g_strdup (include_pointer ? "1" : "0"));
+
+      g_ptr_array_add (argv, g_strdup ("-f"));
+      g_ptr_array_add (argv, g_strdup ("rawvideo"));
+      g_ptr_array_add (argv, g_strdup ("-pixel_format"));
+      g_ptr_array_add (argv, g_strdup ("bgr0"));
+      g_ptr_array_add (argv, g_strdup ("-video_size"));
+      g_ptr_array_add (argv, g_strdup_printf ("%dx%d", rect->width, rect->height));
+      g_ptr_array_add (argv, g_strdup ("-framerate"));
+      g_ptr_array_add (argv, g_strdup (framerate));
+    }
+  else
+    {
+      /* The desktop only sends a frame when the picture changes; the
+       * keepalive repeats the last one, and videorate makes the steady
+       * rate the length is counted in.
+       */
+      g_ptr_array_add (source_argv, g_strdup ("gst-launch-1.0"));
+      g_ptr_array_add (source_argv, g_strdup ("-q"));
+      g_ptr_array_add (source_argv, g_strdup ("-e"));
+      g_ptr_array_add (source_argv, g_strdup ("pipewiresrc"));
+      g_ptr_array_add (source_argv, g_strdup ("fd=3"));
+      g_ptr_array_add (source_argv, g_strdup_printf ("path=%u", node));
+      g_ptr_array_add (source_argv, g_strdup ("do-timestamp=true"));
+      g_ptr_array_add (source_argv, g_strdup ("keepalive-time=30"));
+      g_ptr_array_add (source_argv, g_strdup ("always-copy=true"));
+      g_ptr_array_add (source_argv, g_strdup ("!"));
+      g_ptr_array_add (source_argv, g_strdup ("videoconvert"));
+      g_ptr_array_add (source_argv, g_strdup ("!"));
+      g_ptr_array_add (source_argv, g_strdup ("videorate"));
+      g_ptr_array_add (source_argv, g_strdup ("!"));
+      g_ptr_array_add (source_argv, g_strdup_printf ("video/x-raw,format=I420,framerate=%s/1", framerate));
+      g_ptr_array_add (source_argv, g_strdup ("!"));
+      g_ptr_array_add (source_argv, g_strdup ("y4menc"));
+      g_ptr_array_add (source_argv, g_strdup ("!"));
+      g_ptr_array_add (source_argv, g_strdup ("fdsink"));
+      g_ptr_array_add (source_argv, g_strdup ("fd=4"));
+      g_ptr_array_add (source_argv, g_strdup ("sync=false"));
+
+      g_ptr_array_add (argv, g_strdup ("-f"));
+      g_ptr_array_add (argv, g_strdup ("yuv4mpegpipe"));
     }
 
-  argv = new_ffmpeg_arguments ();
-  g_ptr_array_add (argv, g_strdup ("-f"));
-  g_ptr_array_add (argv, g_strdup ("x11grab"));
-  g_ptr_array_add (argv, g_strdup ("-framerate"));
-  g_ptr_array_add (argv, g_strdup (framerate));
-  g_ptr_array_add (argv, g_strdup ("-draw_mouse"));
-  g_ptr_array_add (argv, g_strdup (include_pointer ? "1" : "0"));
-  g_ptr_array_add (argv, g_strdup ("-video_size"));
-  g_ptr_array_add (argv, g_strdup_printf ("%dx%d", rect->width, rect->height));
   /* the length limits the input: the GIF palette is only made once the
    * input has ended, so limiting the output would never end it
    */
   g_ptr_array_add (argv, g_strdup ("-t"));
   g_ptr_array_add (argv, g_strdup_printf ("%u", length));
   g_ptr_array_add (argv, g_strdup ("-i"));
-  g_ptr_array_add (argv, g_strdup_printf ("%s+%d,%d", display_name, rect->x, rect->y));
+  g_ptr_array_add (argv, g_strdup ("pipe:0"));
 
-  recording = run_ffmpeg (argv, format, path, callback, user_data);
+  recording = run_ffmpeg (argv, source_argv, rect != NULL ? -1 : pipewire_fd,
+                          format, path, callback, user_data);
   if (recording == NULL)
-    return;
+    {
+      if (rect == NULL)
+        screenshot_portal_cast_close ();
+
+      return;
+    }
 
   current = recording;
 
   /* Something to click on to stop early. It sits in the panel, so it is
-   * only part of the video when the panel is.
+   * only part of the video when the panel is. On Wayland the desktop shows
+   * an indicator of its own while the screen is shared.
    */
+  if (rect != NULL)
+    {
 G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-  recording->status_icon = gtk_status_icon_new_from_icon_name ("media-record");
-  gtk_status_icon_set_title (recording->status_icon, _("Videoshot"));
-  gtk_status_icon_set_tooltip_text (recording->status_icon,
-                                    _("Recording a videoshot. Click to stop."));
+      recording->status_icon = gtk_status_icon_new_from_icon_name ("media-record");
+      gtk_status_icon_set_title (recording->status_icon, _("Videoshot"));
+      gtk_status_icon_set_tooltip_text (recording->status_icon,
+                                        _("Recording a videoshot. Click to stop."));
 G_GNUC_END_IGNORE_DEPRECATIONS
-  g_signal_connect (recording->status_icon, "activate",
-                    G_CALLBACK (status_icon_activate_cb), NULL);
+      g_signal_connect (recording->status_icon, "activate",
+                        G_CALLBACK (status_icon_activate_cb), NULL);
+    }
 }
 
 typedef struct {
@@ -550,7 +718,92 @@ gif_master_recorded_cb (const gchar  *path,
                                   gif_converted_cb, data);
 }
 
-/* Records @rect (in device pixels) for @length seconds into @path. */
+typedef struct {
+  gboolean has_rect;
+  GdkRectangle rect;
+  guint length;
+  gboolean include_pointer;
+  gchar *format;
+  gchar *path;
+  gint pipewire_fd;
+  guint32 node;
+  ScreenshotVideoCallback callback;
+  gpointer user_data;
+} Job;
+
+static void
+job_free (Job *job)
+{
+  g_free (job->format);
+  g_free (job->path);
+  g_free (job);
+}
+
+static void
+job_start (Job     *job,
+           gint     pipewire_fd,
+           guint32  node)
+{
+  const GdkRectangle *rect = job->has_rect ? &job->rect : NULL;
+
+  if (g_strcmp0 (job->format, "gif") == 0)
+    {
+      GifData *data = g_new0 (GifData, 1);
+
+      data->master_path = g_strdup_printf ("%s.master", job->path);
+      data->path = g_strdup (job->path);
+      data->callback = job->callback;
+      data->user_data = job->user_data;
+
+      record (rect, pipewire_fd, node, job->length, job->include_pointer,
+              GIF_FRAMERATE, MASTER_FORMAT, data->master_path,
+              gif_master_recorded_cb, data);
+    }
+  else
+    record (rect, pipewire_fd, node, job->length, job->include_pointer,
+            VIDEO_FRAMERATE, job->format, job->path,
+            job->callback, job->user_data);
+
+  job_free (job);
+}
+
+static gboolean
+job_cast_settled_cb (gpointer user_data)
+{
+  Job *job = user_data;
+
+  starting = FALSE;
+  job_start (job, job->pipewire_fd, job->node);
+
+  return G_SOURCE_REMOVE;
+}
+
+static void
+job_cast_ready_cb (gint          pipewire_fd,
+                   guint32       node,
+                   const GError *error,
+                   gpointer      user_data)
+{
+  Job *job = user_data;
+
+  if (error != NULL)
+    {
+      starting = FALSE;
+      job->callback (NULL, error, job->user_data);
+      job_free (job);
+      return;
+    }
+
+  /* give the desktop's question the time to leave the screen */
+  job->pipewire_fd = pipewire_fd;
+  job->node = node;
+  g_timeout_add (CAST_SETTLE_TIME, job_cast_settled_cb, job);
+}
+
+/* Records @rect (in device pixels) for @length seconds into @path. Without
+ * @rect the desktop asks the user what to record, which is the only way
+ * there is on Wayland.
+ */
 void
 screenshot_video_record_async (const GdkRectangle      *rect,
                                guint                    length,
@@ -560,22 +813,37 @@ screenshot_video_record_async (const GdkRectangle      *rect,
                                ScreenshotVideoCallback  callback,
                                gpointer                 user_data)
 {
-  if (g_strcmp0 (format, "gif") == 0 && current == NULL)
+  Job *job;
+
+  if (current != NULL || starting)
     {
-      GifData *data = g_new0 (GifData, 1);
+      g_autoptr(GError) error = NULL;
 
-      data->master_path = g_strdup_printf ("%s.master", path);
-      data->path = g_strdup (path);
-      data->callback = callback;
-      data->user_data = user_data;
+      g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_BUSY,
+                           _("A videoshot is being recorded already"));
+      callback (NULL, error, user_data);
+      return;
+    }
 
-      record_x11 (rect, length, include_pointer, GIF_FRAMERATE,
-                  MASTER_FORMAT, data->master_path,
-                  gif_master_recorded_cb, data);
+  job = g_new0 (Job, 1);
+  job->length = length;
+  job->include_pointer = include_pointer;
+  job->format = g_strdup (format);
+  job->path = g_strdup (path);
+  job->callback = callback;
+  job->user_data = user_data;
+
+  if (rect != NULL)
+    {
+      job->has_rect = TRUE;
+      job->rect = *rect;
+      job_start (job, -1, 0);
     }
   else
-    record_x11 (rect, length, include_pointer, VIDEO_FRAMERATE,
-                format, path, callback, user_data);
+    {
+      starting = TRUE;
+      screenshot_portal_cast_start (include_pointer, job_cast_ready_cb, job);
+    }
 }
 
 /* Writes the video at @source to @path in another @format. */
@@ -591,7 +859,7 @@ screenshot_video_convert_async (const gchar             *source,
   g_ptr_array_add (argv, g_strdup ("-i"));
   g_ptr_array_add (argv, g_strdup (source));
 
-  run_ffmpeg (argv, format, path, callback, user_data);
+  run_ffmpeg (argv, NULL, -1, format, path, callback, user_data);
 }
 
 gboolean
@@ -604,6 +872,10 @@ screenshot_video_is_recording (void)
 void
 screenshot_video_stop (void)
 {
-  if (current != NULL)
-    g_subprocess_send_signal (current->process, SIGINT);
+  if (current == NULL)
+    return;
+
+  /* without frames coming ffmpeg finishes the file by itself */
+  g_subprocess_send_signal (current->source != NULL ? current->source : current->process,
+                            SIGINT);
 }

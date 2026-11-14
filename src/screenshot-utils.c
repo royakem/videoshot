@@ -27,6 +27,8 @@
 #include <glib/gi18n.h>
 
 #include "screenshot-backend-shell.h"
+#include "screenshot-config.h"
+#include "screenshot-portal.h"
 
 #ifdef HAVE_X11
 #include "screenshot-backend-x11.h"
@@ -38,6 +40,24 @@ screenshot_get_pixbuf (GdkRectangle *rectangle)
   GdkPixbuf *screenshot = NULL;
   gboolean force_fallback = FALSE;
   g_autoptr (ScreenshotBackend) backend = NULL;
+
+  /* On Wayland the desktop takes the screenshot, and lets the user point
+   * out a window or an area when that is what was asked for.
+   */
+  if (screenshot_portal_is_wayland ())
+    {
+      g_autoptr(GError) error = NULL;
+
+      screenshot = screenshot_portal_take_screenshot (screenshot_config->take_window_shot ||
+                                                      screenshot_config->take_area_shot,
+                                                      &error);
+      if (screenshot != NULL)
+        return screenshot;
+
+      if (error != NULL)
+        g_message ("Unable to take a screenshot through the desktop portal: %s",
+                   error->message);
+    }
 
 #ifdef HAVE_X11
   force_fallback = g_getenv ("GNOME_SCREENSHOT_FORCE_FALLBACK") != NULL;

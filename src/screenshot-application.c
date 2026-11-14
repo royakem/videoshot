@@ -40,6 +40,7 @@
 #include "screenshot-filename-builder.h"
 #include "screenshot-interactive-dialog.h"
 #include "screenshot-preferences.h"
+#include "screenshot-portal.h"
 #include "screenshot-video.h"
 #include "screenshot-utils.h"
 #include "screenshot-dialog.h"
@@ -546,6 +547,7 @@ video_save_to_file (ScreenshotApplication *self)
 enum {
   CLIPBOARD_URI_LIST,
   CLIPBOARD_COPIED_FILES,
+  CLIPBOARD_TEXT,
 };
 
 static void
@@ -561,6 +563,14 @@ video_clipboard_get_cb (GtkClipboard     *clipboard,
       gchar *uris[] = { (gchar *) uri, NULL };
 
       gtk_selection_data_set_uris (selection_data, uris);
+    }
+  else if (info == CLIPBOARD_TEXT)
+    {
+      /* the path, for places that only take text */
+      g_autofree gchar *path = g_filename_from_uri (uri, NULL, NULL);
+
+      if (path != NULL)
+        gtk_selection_data_set_text (selection_data, path, -1);
     }
   else
     {
@@ -587,18 +597,29 @@ static void
 video_copy_ready (ScreenshotApplication *self,
                   const gchar           *path)
 {
-  static const GtkTargetEntry targets[] = {
-    { "text/uri-list", 0, CLIPBOARD_URI_LIST },
-    { "x-special/gnome-copied-files", 0, CLIPBOARD_COPIED_FILES },
-  };
+  GtkTargetList *list;
+  GtkTargetEntry *targets;
   GtkClipboard *clipboard;
+  gint n_targets;
+
+  /* the same set a file manager offers for a copied file */
+  list = gtk_target_list_new (NULL, 0);
+  gtk_target_list_add (list, gdk_atom_intern_static_string ("x-special/gnome-copied-files"),
+                       0, CLIPBOARD_COPIED_FILES);
+  gtk_target_list_add (list, gdk_atom_intern_static_string ("text/uri-list"),
+                       0, CLIPBOARD_URI_LIST);
+  gtk_target_list_add_text_targets (list, CLIPBOARD_TEXT);
+  targets = gtk_target_table_new_from_list (list, &n_targets);
 
   clipboard = gtk_clipboard_get_for_display (gdk_display_get_default (),
                                              GDK_SELECTION_CLIPBOARD);
-  gtk_clipboard_set_with_data (clipboard, targets, G_N_ELEMENTS (targets),
+  gtk_clipboard_set_with_data (clipboard, targets, n_targets,
                                video_clipboard_get_cb, video_clipboard_clear_cb,
                                g_filename_to_uri (path, NULL, NULL));
-  gtk_clipboard_set_can_store (clipboard, targets, G_N_ELEMENTS (targets));
+  gtk_clipboard_set_can_store (clipboard, targets, n_targets);
+
+  gtk_target_table_free (targets, n_targets);
+  gtk_target_list_unref (list);
 }
 
 static void
@@ -771,6 +792,14 @@ video_recorded_cb (const gchar  *path,
   g_autoptr(GFile) save_file = NULL;
   GdkPixbuf *preview;
 
+  /* the user closed the desktop's question about what to record */
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) &&
+      screenshot_config->file == NULL)
+    {
+      video_error_response_cb (0, self);
+      return;
+    }
+
   if (error != NULL)
     {
       g_critical ("Unable to record a videoshot: %s", error->message);
@@ -843,12 +872,15 @@ start_take_video (ScreenshotApplication *self)
 {
   g_autofree gchar *format = NULL, *path = NULL;
   GdkRectangle rect;
-  gboolean found;
+  gboolean found, ask_desktop;
 
-  found = screenshot_video_get_target_rect (self->rectangle, &rect);
+  /* on Wayland the desktop asks the user what to record */
+  ask_desktop = screenshot_portal_is_wayland ();
+
+  found = !ask_desktop && screenshot_video_get_target_rect (self->rectangle, &rect);
   g_clear_pointer (&self->rectangle, g_free);
 
-  if (!found)
+  if (!found && !ask_desktop)
     {
       g_autoptr(GError) error = NULL;
 
@@ -877,11 +909,18 @@ start_take_video (ScreenshotApplication *self)
       path = screenshot_video_build_filename (cache_dir, format);
     }
 
-  screenshot_video_record_async (&rect,
+  screenshot_video_record_async (ask_desktop ? NULL : &rect,
                                  screenshot_config->video_length,
                                  screenshot_config->include_pointer,
                                  format, path,
                                  video_recorded_cb, self);
+}
+
+/* Whether the area is selected here; on Wayland the desktop does that. */
+static gboolean
+selects_area (void)
+{
+  return screenshot_config->take_area_shot && !screenshot_portal_is_wayland ();
 }
 
 static gboolean
@@ -902,7 +941,7 @@ start_screenshot_timeout (ScreenshotApplication *self)
 {
   guint delay = screenshot_config->delay * 1000;
 
-  if (!screenshot_config->take_area_shot)
+  if (!selects_area ())
     /* hold the GApplication while doing the async screenshot op */
     g_application_hold (G_APPLICATION (self));
 
@@ -945,7 +984,7 @@ rectangle_found_cb (GdkRectangle *rectangle,
 static void
 screenshot_start (ScreenshotApplication *self)
 {
-  if (screenshot_config->take_area_shot)
+  if (selects_area ())
     {
       /* hold the GApplication while selecting the screen area */
       g_application_hold (G_APPLICATION (self));

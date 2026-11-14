@@ -16,7 +16,9 @@ Read [README.md](README.md) first.
 
 | File | Role |
 |---|---|
-| `src/screenshot-video.c` | Recorder. Runs `ffmpeg -f x11grab`, converts between formats, makes the preview frame, picks file names. |
+| `src/screenshot-video.c` | Recorder. Runs a frame source piped into `ffmpeg`, converts between formats, makes the preview frame, picks file names. |
+| `src/videoshot-grab.c` | Frame source on X11, installed in libexec. Reads the screen with XShm and writes raw frames to stdout. |
+| `src/screenshot-portal.c` | Wayland: ScreenCast and Screenshot calls to the desktop portal. |
 | `src/screenshot-application.c` | Flow. `take_screenshot_timeout()` branches to `start_take_video()`; `video_recorded_cb()` opens the result window; `video_prepare()` converts before Save or Copy. |
 | `src/screenshot-interactive-dialog.c`, `data/ui/screenshot-interactive-dialog.ui` | Main dialog: the two buttons and the Length row. |
 | `src/screenshot-dialog.c`, `data/ui/screenshot-dialog.ui` | Result window. `screenshot_dialog_set_video()` adds the Format row. |
@@ -30,13 +32,28 @@ Read [README.md](README.md) first.
   file to the chosen folder; Copy puts the cache file's URI on the clipboard.
   Cache files older than a day are removed when the next recording starts.
 - `--file` records straight to that file and shows no window.
+- Two child processes joined by a pipe: a frame source and ffmpeg. On X11 the
+  source is `videoshot-grab` (raw BGRx on stdout). On Wayland it is
+  `gst-launch-1.0 pipewiresrc ... ! y4menc ! fdsink fd=4`, with the portal's
+  PipeWire connection as fd 3.
+- `videoshot-grab` reads every frame until two reads in a row are equal. With
+  a compositor (seen on Cinnamon with the NVIDIA driver) a single read can
+  catch the screen half painted, with the wallpaper where a window belongs.
+  ffmpeg's own `x11grab` put such frames in the video, so it is not used.
+- `VIDEOSHOT_GRAB` overrides the path of the grabber, for running from the
+  build directory.
+- `pipewiresrc keepalive-time` matters: desktops send frames only when the
+  picture changes, and the length is counted in frames.
+- On Wayland the recording starts 600 ms after the portal answers, so the
+  desktop's dialog is gone from the first frames.
 - ffmpeg writes to a hidden `.name.part` file that is renamed when it ends.
 - The length is an input option (`-t` before `-i`).
 - GIFs are recorded as a lossless Matroska master (utvideo) and converted afterwards:
   ffmpeg cannot finish a palette GIF when interrupted, so a direct GIF could
   not be stopped early.
-- Stopping sends SIGINT to ffmpeg. It exits non-zero then, so success is
-  judged by the output file, not the exit status.
+- Stopping sends SIGINT to the frame source; ffmpeg sees the end of its input
+  and finishes the file. Success is judged by the output file, not the exit
+  status.
 - On Cinnamon the area selection comes from the session bus
   (`org.gnome.Shell.Screenshot.SelectArea`, owned by Cinnamon). Tests on the
   real session bus therefore pop up a selection on the real desktop.
@@ -65,6 +82,13 @@ Test in a private display and on a private bus, not on your own session bus:
   and `xclip -selection clipboard -o -t TARGETS`.
 - Window mode needs a window that takes focus (`zenity --info`), `xclock` does not.
 
+Wayland needs a real desktop: the portal dialog has to be clicked. It was
+tested on a Steam Deck in desktop mode (Plasma 6 Wayland), with the build in
+an Arch `distrobox` container and the picture checked over HDMI capture.
+
+To check for half painted frames on X11, record a playing video placed over
+the wallpaper's bright parts and look for frames that match the wallpaper.
+
 Cases to cover after a change: each format from the command line, window and
 area mode, delay, early stop (`--stop` and relaunch, also for GIF), format
 change in the result window, Copy, Save, Cancel back to the main dialog,
@@ -82,7 +106,10 @@ betas are `0.1.0-beta1` as a tag and `0.1.0~beta1` for apt and dnf.
 
 ## Open points
 
-- Wayland recording (needs the ScreenCast portal and PipeWire).
+- Wayland: Videoshot's own area selection and capture mode buttons have no
+  effect, the desktop's dialog chooses. Tested on KDE Plasma 6 only (GNOME,
+  Sway and Cinnamon's Wayland session are untested). Copy to Clipboard is
+  untested there.
 - No countdown overlay for the delay.
 - The icon is still the GNOME Screenshot icon.
 - New strings are untranslated; the `po` files only cover the old ones.

@@ -31,13 +31,34 @@ manager does. Paste it into a folder, a chat or a document.
 
 ## Requirements
 
-- An X11 session (Cinnamon, MATE, Xfce). Recording does not work on Wayland yet.
-- `ffmpeg` with x11grab, libx264 and libvpx (the Mint/Ubuntu package has them).
-- To build: GLib, GTK 3, libhandy 1.5 or newer, X11, Xext, meson.
+- An X11 session (Cinnamon, MATE, Xfce) or a Wayland session with a desktop
+  portal that shares the screen (KDE Plasma, GNOME).
+- `ffmpeg` with libx264 and libvpx (the Mint/Ubuntu package has them).
+- On Wayland also `gst-launch-1.0` with the PipeWire plugin and the "base"
+  and "good" plugins.
+- To build: GLib, GTK 3, libhandy 1.5 or newer, X11, Xext, Xfixes, meson.
 
 ```sh
-sudo apt install ffmpeg meson libgtk-3-dev libhandy-1-dev libx11-dev libxext-dev
+sudo apt install ffmpeg meson libgtk-3-dev libhandy-1-dev libx11-dev libxext-dev libxfixes-dev
 ```
+
+For Wayland:
+
+```sh
+sudo apt install gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-good
+```
+
+## Wayland
+
+On Wayland the desktop decides what a program may see. When you take a
+videoshot, the desktop asks you which screen or window to share, and that is
+what gets recorded. The Screen, Window and Selection buttons do not choose it
+there. Screenshots go through the desktop too; it may ask for permission the
+first time.
+
+Tested on KDE Plasma 6. While a videoshot records, the desktop shows its own
+screen sharing indicator. To stop early, run `videoshot --stop` or start
+Videoshot again.
 
 ## Build and install
 
@@ -90,8 +111,9 @@ Notes on the code layout and on testing are in [AGENTS.md](AGENTS.md).
 
 ## Status
 
-Version 0.1.0-beta1, a beta. Known gaps: no Wayland recording, no countdown
-during the delay, and the new texts are in English only.
+Version 0.1.0-beta1, a beta. Known gaps: no selection of an area by Videoshot
+itself on Wayland, no countdown during the delay, and the new texts are in
+English only.
 
 ## Support
 
