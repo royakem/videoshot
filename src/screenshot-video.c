@@ -280,6 +280,33 @@ status_icon_activate_cb (GtkStatusIcon *status_icon,
   screenshot_video_stop ();
 }
 
+/* Some distributions build ffmpeg without libx264. */
+static gboolean
+has_libx264 (void)
+{
+  static gsize checked = 0;
+  static gboolean found = FALSE;
+
+  if (g_once_init_enter (&checked))
+    {
+      g_autoptr(GSubprocess) process = NULL;
+      g_autofree gchar *encoders = NULL;
+
+      process = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE |
+                                  G_SUBPROCESS_FLAGS_STDERR_SILENCE,
+                                  NULL,
+                                  "ffmpeg", "-hide_banner", "-encoders", NULL);
+      if (process != NULL &&
+          g_subprocess_communicate_utf8 (process, NULL, NULL, &encoders, NULL, NULL) &&
+          encoders != NULL)
+        found = (strstr (encoders, " libx264 ") != NULL);
+
+      g_once_init_leave (&checked, 1);
+    }
+
+  return found;
+}
+
 static void
 add_format_arguments (GPtrArray   *argv,
                       const gchar *format)
@@ -288,12 +315,11 @@ add_format_arguments (GPtrArray   *argv,
 
   if (g_strcmp0 (format, MASTER_FORMAT) == 0)
     {
+      /* lossless, fast, and part of every ffmpeg build */
       g_ptr_array_add (argv, g_strdup ("-c:v"));
-      g_ptr_array_add (argv, g_strdup ("libx264rgb"));
-      g_ptr_array_add (argv, g_strdup ("-preset"));
-      g_ptr_array_add (argv, g_strdup ("ultrafast"));
-      g_ptr_array_add (argv, g_strdup ("-crf"));
-      g_ptr_array_add (argv, g_strdup ("0"));
+      g_ptr_array_add (argv, g_strdup ("utvideo"));
+      g_ptr_array_add (argv, g_strdup ("-pix_fmt"));
+      g_ptr_array_add (argv, g_strdup ("gbrp"));
       muxer = "matroska";
     }
   else if (g_strcmp0 (format, "gif") == 0)
@@ -327,11 +353,21 @@ add_format_arguments (GPtrArray   *argv,
         }
       else
         {
-          g_ptr_array_add (argv, g_strdup ("libx264"));
-          g_ptr_array_add (argv, g_strdup ("-preset"));
-          g_ptr_array_add (argv, g_strdup ("veryfast"));
-          g_ptr_array_add (argv, g_strdup ("-crf"));
-          g_ptr_array_add (argv, g_strdup ("20"));
+          if (has_libx264 ())
+            {
+              g_ptr_array_add (argv, g_strdup ("libx264"));
+              g_ptr_array_add (argv, g_strdup ("-preset"));
+              g_ptr_array_add (argv, g_strdup ("veryfast"));
+              g_ptr_array_add (argv, g_strdup ("-crf"));
+              g_ptr_array_add (argv, g_strdup ("20"));
+            }
+          else
+            {
+              /* what distributions ship when they leave libx264 out */
+              g_ptr_array_add (argv, g_strdup ("libopenh264"));
+              g_ptr_array_add (argv, g_strdup ("-b:v"));
+              g_ptr_array_add (argv, g_strdup ("6M"));
+            }
 
           if (g_strcmp0 (format, "mkv") == 0)
             muxer = "matroska";

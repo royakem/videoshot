@@ -32,7 +32,7 @@ Read [README.md](README.md) first.
 - `--file` records straight to that file and shows no window.
 - ffmpeg writes to a hidden `.name.part` file that is renamed when it ends.
 - The length is an input option (`-t` before `-i`).
-- GIFs are recorded as a lossless Matroska master and converted afterwards:
+- GIFs are recorded as a lossless Matroska master (utvideo) and converted afterwards:
   ffmpeg cannot finish a palette GIF when interrupted, so a direct GIF could
   not be stopped early.
 - Stopping sends SIGINT to ffmpeg. It exits non-zero then, so success is
@@ -69,6 +69,14 @@ Cases to cover after a change: each format from the command line, window and
 area mode, delay, early stop (`--stop` and relaunch, also for GIF), format
 change in the result window, Copy, Save, Cancel back to the main dialog,
 Preferences, and a plain screenshot.
+
+## Packages
+
+`packaging/build-packages.sh` builds the `.deb`, `.rpm` and Arch package from
+the committed tree in clean containers and runs `packaging/smoke-test.sh` in
+each. Run it before a release. H.264 uses libx264, or libopenh264 where ffmpeg
+has no libx264 (Fedora). The spec and PKGBUILD download the `v<version>` tag
+archive from GitHub, so they only work on their own once that tag is public.
 
 ## Open points
 

@@ -47,6 +47,23 @@ ninja -C build
 ninja -C build install
 ```
 
+## Packages
+
+Packaging for three package managers is in the tree:
+
+| Package manager | Files | Built and tested on |
+|---|---|---|
+| apt (`.deb`) | [debian/](debian) | Ubuntu 24.04, the base of Linux Mint 22 |
+| dnf (`.rpm`) | [packaging/rpm/videoshot.spec](packaging/rpm/videoshot.spec) | Fedora |
+| pacman | [packaging/arch/PKGBUILD](packaging/arch/PKGBUILD) | Arch Linux |
+
+`packaging/build-packages.sh` builds all three in clean containers (it needs
+docker), installs each one there, records a clip in every format and puts the
+packages in `dist/`.
+
+Fedora's own ffmpeg has no libx264. Videoshot then records MP4 and Matroska
+with libopenh264 instead.
+
 Videoshot uses its own application ID (`com.royake.Videoshot`) and settings
 schema, so it installs next to `gnome-screenshot` without touching it.
 
