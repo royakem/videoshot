@@ -47,7 +47,7 @@ static const gdouble FLASH_FADE_FACTOR = 0.95;
 static const guint FLASH_ANIMATION_RATE = 120;
 
 /* When to consider the flash finished so we can stop fading */
-static const gdouble FLASH_LOW_THRESHOLD = 0.01;
+static const gdouble FLASH_LOW_THRESHOLD = 0.1;
 
 /*
  * CheeseFlashPrivate:

@@ -373,8 +373,14 @@ screenshot_save_to_file (ScreenshotApplication *self)
 static void
 screenshot_back (ScreenshotApplication *self)
 {
-  screenshot_close_interactive_dialog (self);
-  screenshot_show_interactive_dialog (self);
+  if (screenshot_config->activated) {
+    screenshot_close_interactive_dialog (self);
+    screenshot_show_interactive_dialog (self);
+  }
+  else {
+    g_application_release (G_APPLICATION (self));
+    exit (EXIT_SUCCESS);
+  }
 }
 
 static void
@@ -430,6 +436,8 @@ build_filename_ready_cb (GObject *source,
 
   /* now release the application */
   g_application_release (G_APPLICATION (self));
+
+  screenshot_config->interactive = TRUE;
 
   if (error != NULL)
     {
@@ -819,6 +827,8 @@ screenshot_application_startup (GApplication *app)
   G_APPLICATION_CLASS (screenshot_application_parent_class)->startup (app);
 
   hdy_init ();
+  hdy_style_manager_set_color_scheme (hdy_style_manager_get_default (),
+                                      HDY_COLOR_SCHEME_PREFER_LIGHT);
 
   screenshot_load_config ();
 
@@ -845,6 +855,7 @@ screenshot_application_activate (GApplication *app)
     }
 
   screenshot_config->interactive = TRUE;
+  screenshot_config->activated = TRUE;
   screenshot_show_interactive_dialog (SCREENSHOT_APPLICATION (app));
 }
 

@@ -61,6 +61,7 @@ screenshot_load_config (void)
 
   config->take_window_shot = FALSE;
   config->take_area_shot = FALSE;
+  config->activated = FALSE;
 
   screenshot_config = config;
 }

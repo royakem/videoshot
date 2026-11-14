@@ -42,6 +42,7 @@ typedef struct {
   guint delay;
 
   gboolean interactive;
+  gboolean activated;
 } ScreenshotConfig;
 
 extern ScreenshotConfig *screenshot_config;
