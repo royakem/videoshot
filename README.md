@@ -12,7 +12,7 @@ of you, ready to save or to paste into a chat.
 There is no project to set up, no timeline and nothing to learn. If you can
 take a screenshot, you can take a videoshot. And it still takes screenshots.
 
-![Selecting an area around a clock, recording it and saving the clip](docs/demo.gif)
+![Selecting an area around a clock, recording it and playing the clip in the result window](docs/demo.gif)
 
 ## What you can do with it
 
